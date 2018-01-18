@@ -37,11 +37,9 @@
       <file leaf-file-name="kbp10_formatter.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/ncel/data/kbp10_formatter.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="2070">
-              <caret line="90" column="37" lean-forward="true" selection-start-line="90" selection-start-column="37" selection-end-line="90" selection-end-column="37" />
-              <folding>
-                <element signature="e#104#117#0" expanded="true" />
-              </folding>
+            <state relative-caret-position="92">
+              <caret line="4" column="13" lean-forward="true" selection-start-line="4" selection-start-column="13" selection-end-line="4" selection-end-column="13" />
+              <folding />
             </state>
           </provider>
         </entry>
@@ -151,6 +149,9 @@
         <option value="$PROJECT_DIR$/ncel/utils/xmlProcessor.py" />
         <option value="$PROJECT_DIR$/ncel/data/kbp15_formatter.py" />
         <option value="$PROJECT_DIR$/ncel/data/kbp10_formatter.py" />
+        <option value="$PROJECT_DIR$/ncel/data/__init__.py" />
+        <option value="$PROJECT_DIR$/ncel/models/__init__.py" />
+        <option value="$PROJECT_DIR$/ncel/utils/__init__.py" />
       </list>
     </option>
   </component>
@@ -975,13 +976,35 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/ncel/utils/__init__.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="0">
+          <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/ncel/models/__init__.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="0">
+          <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/ncel/data/__init__.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="0">
+          <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/ncel/data/kbp10_formatter.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="2070">
-          <caret line="90" column="37" lean-forward="true" selection-start-line="90" selection-start-column="37" selection-end-line="90" selection-end-column="37" />
-          <folding>
-            <element signature="e#104#117#0" expanded="true" />
-          </folding>
+        <state relative-caret-position="92">
+          <caret line="4" column="13" lean-forward="true" selection-start-line="4" selection-start-column="13" selection-end-line="4" selection-end-column="13" />
+          <folding />
         </state>
       </provider>
     </entry>
