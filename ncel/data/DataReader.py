@@ -75,9 +75,7 @@ class DataReader:
         return tokens
 
     # {doc_id:[[startP, endP, wikiId, mention_str],...], ...}
-    def loadKbpMentions(self, file, id_map):
-        # load query to wiki map
-        query_id_map = self.loadKbidMap(id_map)
+    def loadKbpMentions(self, file):
         # load mentions
         doc_mentions = dict()
         with codecs.open(file, 'r', encoding='utf-8') as fin:
@@ -88,14 +86,16 @@ class DataReader:
                 if len(tmp_items) < 3: continue
 
                 doc_id = tmp_items[0]
+                # remove other lang docs
                 if not doc_id.startswith(self.lang): continue
                 start_p = int(tmp_items[1])
                 end_p = int(tmp_items[2])
                 mention_str = items[2]
+
                 kbp_ent_id = items[4]
-                if kbp_ent_id not in query_id_map: continue
+
                 doc_mentions[doc_id] = doc_mentions.get(doc_id, [])
-                doc_mentions[doc_id].append([start_p, end_p, query_id_map[kbp_ent_id], mention_str])
+                doc_mentions[doc_id].append([start_p, end_p, kbp_ent_id, mention_str])
         # sort doc_mentions
         for id in doc_mentions:
             dm = doc_mentions[id]
@@ -116,7 +116,6 @@ class DataReader:
             if postfix_inf == -1 : continue
             filename = f[:postfix_inf]
             if filename in mentions:
-                #print("processing {0}!".format(f))
                 sents = extract(os.path.join(text_path, f))
                 doc = self.readDoc(sents, mentions[filename])
                 doc.doc_id = filename
@@ -240,133 +239,6 @@ class DataReader:
                         elif m_index in tmp_map:
                             doc.mentions.append([tmp_map[m_index], len(doc.text)-tmp_map[m_index]-add_text, mentions[m_index][2], ' '.join(doc.text[tmp_map[m_index]:tmp_map[m_index]+len(doc.text)-tmp_map[m_index]-add_text])])
         return doc
-
-    def readConll(self, file_name):
-        corpus = []
-        with codecs.open(file_name, 'r', encoding='UTF-8') as fin:
-            doc_id = 0
-            is_mention = False
-            doc = None
-            for line in fin:
-                line = line.strip()
-                if line.startswith('-DOCSTART-'):
-                    if doc_id > 0 and not isinstance(doc, type(None)) and len(doc.text) > 0 and len(doc.mentions) > 0:
-                        corpus.append(doc)
-                    doc_id += 1
-                    if doc_id % 20 ==0:
-                        print("has processed {0} docs!".format(doc_id))
-                    doc = Doc()
-                    doc.doc_id = doc_id
-                    is_mention = False
-                    continue
-                elif len(line) < 1:
-                    is_mention = False
-                    continue
-                else:
-                    items = re.split(r'\t', line)
-                    if len(items) > 4 and items[1] == 'B':
-                        doc.mentions.append([len(doc.text), 1, items[5], items[2]])
-                        doc.text.append(items[2])
-                        is_mention = True
-                    elif is_mention and len(items) > 2 and items[1] == 'I':
-                        doc.mentions[-1][1] += 1
-                        continue
-                    else:
-                        doc.text.append(items[0])
-                        is_mention = False
-                        continue
-                if doc_id > 0 and not isinstance(doc, type(None)) and len(doc.text) > 0 and len(doc.mentions) > 0:
-                    corpus.append(doc)
-        return corpus
-
-    # {doc_id:[[startP, endP, wikiId, mention_str],...], ...}
-    def extractMentionDic(self, ans15_file, ans15_train_file, ans16_file, conll_file, id_map):
-        mentions15 = self.loadKbpMentions(ans15_file, id_map=id_map)
-        mentions15_train = self.loadKbpMentions(ans15_train_file, id_map=id_map)
-        mentions16 = self.loadKbpMentions(ans16_file,id_map=id_map)
-
-        mention_endic = {}
-        mention_esdic = {}
-        mention_zhdic = {}
-        encount = 0
-        escount = 0
-        zhcount = 0
-        for doc in mentions15:
-            tmp_mentions = mentions15[doc]
-            if doc.startswith('ENG') :
-                mention_dic = mention_endic
-                count = encount
-            elif doc.startswith('SPA') :
-                mention_dic = mention_esdic
-                count = escount
-            elif doc.startswith('CMN') :
-                mention_dic = mention_zhdic
-                count = zhcount
-            else: continue
-            for tmp_ment in tmp_mentions:
-                ment = tmp_ment[3]
-                ent_id = tmp_ment[2]
-                tmp_ans = set() if ment not in mention_dic else mention_dic[ment]
-                if ent_id not in tmp_ans: count += 1
-                tmp_ans.add(ent_id)
-                mention_dic[ment] = tmp_ans
-        for doc in mentions15_train:
-            tmp_mentions = mentions15_train[doc]
-            if doc.startswith('ENG') :
-                mention_dic = mention_endic
-                count = encount
-            elif doc.startswith('SPA') :
-                mention_dic = mention_esdic
-                count = escount
-            elif doc.startswith('CMN') :
-                mention_dic = mention_zhdic
-                count = zhcount
-            for tmp_ment in tmp_mentions:
-                ment = tmp_ment[3]
-                ent_id = tmp_ment[2]
-                tmp_ans = set() if ment not in mention_dic else mention_dic[ment]
-                if ent_id not in tmp_ans: count += 1
-                tmp_ans.add(ent_id)
-                mention_dic[ment] = tmp_ans
-        for doc in mentions16:
-            tmp_mentions = mentions16[doc]
-            if doc.startswith('ENG') :
-                mention_dic = mention_endic
-                count = encount
-            elif doc.startswith('SPA') :
-                mention_dic = mention_esdic
-                count = escount
-            elif doc.startswith('CMN') :
-                mention_dic = mention_zhdic
-                count = zhcount
-            for tmp_ment in tmp_mentions:
-                ment = tmp_ment[3]
-                ent_id = tmp_ment[2]
-                tmp_ans = set() if ment not in mention_dic else mention_dic[ment]
-                if ent_id not in tmp_ans: count += 1
-                tmp_ans.add(ent_id)
-                mention_dic[ment] = tmp_ans
-        print("kbp has totally english {0} mentions of {1} entities!".format(len(mention_endic), encount))
-        print("kbp has totally spanish {0} mentions of {1} entities!".format(len(mention_esdic), escount))
-        print("kbp has totally Chinese {0} mentions of {1} entities!".format(len(mention_zhdic), zhcount))
-        conll_corpus = self.readConll(conll_file)
-        mention_dic = mention_endic
-        count = encount
-        for doc in conll_corpus:
-            for mention in doc.mentions:
-                ment = mention[3]
-                ent_id = mention[2]
-                tmp_ans = set() if ment not in mention_dic else mention_dic[ment]
-                if ent_id not in tmp_ans: count += 1
-                tmp_ans.add(ent_id)
-                mention_dic[ment] = tmp_ans
-        print("Conll has totally english {0} mentions of {1} entities!".format(len(mention_dic), count))
-        return mention_endic, mention_esdic, mention_zhdic
-
-    def saveMentionDic(self, mention_dic, mention_dic_file):
-        with codecs.open(mention_dic_file, 'w', encoding='UTF-8') as fout:
-            for ment in mention_dic:
-                fout.write("{0}\t{1}\n".format(ment, '\t'.join(mention_dic[ment])))
 
 if __name__ == '__main__':
     dr = DataReader()

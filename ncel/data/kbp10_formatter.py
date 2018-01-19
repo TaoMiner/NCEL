@@ -20,16 +20,14 @@ def loadKbp2WikiMap(filename):
 nonTextRE = re.compile(r'^<(.*)>$')
 eleTagRE = re.compile(r'(<[^<>]+?>)([^<>]+?)(</[^<>]+?>)')
 class kbp10Formatter():
-    def __init__(self, text_path, query_xml, query_ans_file, kbp2wiki_id_map):
+    def __init__(self, text_path, query_xml, query_ans_file):
         self._text_path = text_path
         self._query_xml = query_xml
         self._query_ans_file = query_ans_file
-        self._kbp2wiki_id_map = kbp2wiki_id_map
 
-    # return doc_mentions, {doc_id:[[mention_text, wiki_id, [strat_offset]], ... ]}
+    # return doc_mentions, {doc_id:[[mention_text, kbp_ent_id, [strat_offset]], ... ]}
+    # kbp_ent_id may be 'NIL'
     def getDocMentions(self):
-        # load query to wiki map
-        query_id_map = loadKbp2WikiMap(self._kbp2wiki_id_map)
         # load mentions
         q_xml = kbp10XmlHandler(self._query_xml)
         query_dict = dict()
@@ -40,18 +38,18 @@ class kbp10Formatter():
             for line in fin:
                 items = re.split(r'\t', line.strip())
                 if len(items) < 2: continue
-                if items[0] in query_dict and items[1] in query_id_map:
-                    query_dict[items[0]][2] = query_id_map[items[1]]
+                if items[0] in query_dict:
+                    query_dict[items[0]][2] = items[1]
         # rebuild mentions
         doc_mentions = dict()
         for qid in query_dict:
-            if query_dict[qid][2] == '' and query_dict[qid][3] == '' : continue
+            if query_dict[qid][2] == '': continue
             doc_id = query_dict[qid][0]
             doc_mentions[doc_id] = doc_mentions.get(doc_id, [])
             doc_mentions[doc_id].append(query_dict[qid][1:])
         return doc_mentions
 
-    def format(self, output_path):
+    def format(self, output_path, xml_file):
         all_doc_mentions = self.getDocMentions()
         # process raw text
         new_all_mentions = dict()
@@ -80,12 +78,12 @@ class kbp10Formatter():
                     with codecs.open(out_fname, 'w') as fout:
                         fout.write(tmp_lines+'\n')
         # format all doc mentions in xml
-        buildXml(os.path.join(output_path, 'kbp2010.xml'), new_all_mentions)
+        buildXml(xml_file, new_all_mentions)
 
 if __name__ == "__main__":
     text_path = '/home/caoyx/data/kbp/kbp2010/TAC_2010_KBP_Source_Data/data/2010/wb/'
     query_xml = '/home/caoyx/data/kbp/kbp2010/TAC_2010_KBP_Evaluation_Entity_Linking_Gold_Standard_V1.0/data/tac_2010_kbp_evaluation_entity_linking_queries.xml'
     query_ans_file = '/home/caoyx/data/kbp/kbp2010/TAC_2010_KBP_Evaluation_Entity_Linking_Gold_Standard_V1.0/data/tac_2010_kbp_evaluation_entity_linking_query_types.tab'
     kbp2wiki_id_map = '/home/caoyx/data/kbp/kbp2010/id.key2010'
-    kf = kbp10Formatter(text_path, query_xml, query_ans_file, kbp2wiki_id_map)
-    kf.format('/home/caoyx/data/kbp/kbp_cl/kbp10/eval/')
+    kf = kbp10Formatter(text_path, query_xml, query_ans_file)
+    kf.format('/home/caoyx/data/kbp/kbp_cl/kbp10/eval/', '/home/caoyx/data/kbp/kbp_cl/kbp10/kbp10_eval_gold.xml')

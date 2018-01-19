@@ -106,7 +106,7 @@ def buildXml(xml_file, doc_mentions):
             annotation_elem = ET.SubElement(doc_elem, "annotation")
             mention_elem = ET.SubElement(annotation_elem, "mention")
             mention_elem.text = m[0]
-            wikiName_elem = ET.SubElement(annotation_elem, "wikiName")
+            wikiName_elem = ET.SubElement(annotation_elem, "wikiId")
             wikiName_elem.text = m[1]
             offset_elem = ET.SubElement(annotation_elem, "offset")
             offset_elem.text = str(m[2])
