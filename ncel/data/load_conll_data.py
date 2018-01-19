@@ -48,10 +48,11 @@ def _CoNLLRawToTuplesIterator(lines):
                 yield (t[2], True, True, t[3], t[4], int(t[5]), t[6] if len(t) >= 7 else None)
 
 class CoNLLIterator:
-    # the new iterator does not support using a zip file.
-    def __init__(self, fname, genre='testa', include_unresolved=False, lowercase=False):
+    # genre \in [0, 1, 2] indicates ['testa', 'testb', 'train']
+    def __init__(self, fname, genre=0, include_unresolved=False, lowercase=False):
         self._fname = fname
-        self._split = genre
+        if genre not in [0, 1, 2] : genre = 0
+        self._split = DOC_GENRE[genre]
         self._include_unresolved = include_unresolved
         self.lowercase = lowercase
 
@@ -99,15 +100,18 @@ class CoNLLIterator:
             for mention in doc.mentions:
                 yield mention
 
-def load_data(text_path, mention_path=None, genre='testa', lowercase=False):
-    print("Loading", text_path)
+def load_data(text_path=None, mention_file=None, kbp_id2wikiid_file=None, genre=0, include_unresolved=False, lowercase=False):
+    assert not isinstance(type(mention_file), None), "conll data requires mention file!"
+    print("Loading", mention_file)
     docs = []
-    doc_iter = CoNLLIterator(text_path, genre=genre, lowercase=lowercase)
+    doc_iter = CoNLLIterator(mention_file, genre=genre, include_unresolved = include_unresolved, lowercase=lowercase)
     for doc in doc_iter.documents():
         docs.append(doc)
     return docs
 
 if __name__ == "__main__":
     # Demo:
-    docs = load_data('/data/CoNLL/CoNLL_AIDA-YAGO2-dataset.tsv')
-    print(docs[0])
+    docs = load_data(mention_file='/home/caoyx/data/conll/AIDA-YAGO2-dataset.tsv')
+    print(docs[0].doc_name)
+    print(docs[0].mentions)
+    print(docs[0].tokens)

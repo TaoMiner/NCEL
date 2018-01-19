@@ -1,4 +1,4 @@
-from ncel.data.DataReader import *
+from ncel.data.KBPDataReader import *
 from ncel.utils.xmlProcessor import buildXml
 
 def getNlpToolUrl(lang):

@@ -14,9 +14,16 @@ def _WnedFileToDocIterator(fpath):
         lines = f.readlines()
         yield (doc_name, lines)
 
+en_punctuation = " \'\",:()\-\n"
+zh_punctuation = " ·＂＃＄％＆＇（）＊＋，－／：；＜＝＞＠［＼］＾＿｀｛｜｝～｟｠｢｣､、〃》「」『』【】〔〕〖〗〘〙〚〛〜〝〞〟〰〾〿–—‘’‛“”„‟…‧﹏"
+en_sent_split_punc = "\.?!"
+zh_ssplit_punc = "！？｡。"
+punction = '[{0}{1}]'.format(en_punctuation, zh_punctuation)
+ssplict_puncRE = re.compile('[{0}{1}]'.format(en_sent_split_punc, zh_ssplit_punc))
+
 class WnedDataLoader(xmlHandler):
     def __init__(self, rawtext_path, mention_fname, include_unresolved=False, lowercase=False):
-        super(WnedDataLoader, self).__init__()
+        super(WnedDataLoader, self).__init__(['mention', 'wikiName'], ['offset', 'length'])
         self._fpath = rawtext_path
         self._m_fname = mention_fname
         self._include_unresolved = include_unresolved
@@ -25,11 +32,12 @@ class WnedDataLoader(xmlHandler):
     def _processLineSlice(self, line_slice, doc, sent):
         # split words in line slice
         # preprocess
-        raw_tokens = re.split(r'[ \'",:()\-\n]', line_slice)
+        raw_tokens = re.split(punction, line_slice)
 
         for rt in raw_tokens:
             if len(rt) < 1 : continue
-            dot_idx = rt.find('.')
+            m = ssplict_puncRE.search(rt)
+            dot_idx = m.start() if m else -1
             if dot_idx < 0 :
                 sent.append(rt)
                 doc.tokens.append(rt)
@@ -67,6 +75,9 @@ class WnedDataLoader(xmlHandler):
             split_inx = set()
             doc_mentions = all_mentions[doc_name]
             for j, doc_mention in enumerate(doc_mentions):
+                # remove NIL entity
+                if not self._include_unresolved and doc_mention['wikiName'] == 'NIL': continue
+
                 doc_start_inx = doc_mention['offset']
                 doc_end_inx = doc_mention['offset'] + doc_mention['length']
                 split_inx.add(doc_start_inx)
@@ -76,7 +87,8 @@ class WnedDataLoader(xmlHandler):
                 end_inx[doc_end_inx] = end_inx.get(doc_end_inx, [])
                 end_inx[doc_end_inx].append(j)
                 # [_, _, new_start_offset, new_tokens_num]
-                tmp_mentions[j] = [doc_mention['mention'], doc_mention['wiki_name'], -1, -1]
+
+                tmp_mentions[j] = [doc_mention['mention'], doc_mention['wikiName'], -1, -1]
 
             # sort the slice inx
             split_inx = sorted(split_inx)
@@ -127,20 +139,20 @@ class WnedDataLoader(xmlHandler):
             for mention in doc.mentions:
                 yield mention
 
-def load_data(text_path, mention_path=None, lowercase=False):
-    print("Loading", text_path)
+def load_data(text_path=None, mention_file=None, kbp_id2wikiid_file=None, genre=0, include_unresolved=False, lowercase=False):
+    assert not isinstance(type(text_path), None) and not isinstance(type(mention_file), None),\
+        "wned data requires raw text path and mention file!"
+    print("Loading {0}, {1}".format(text_path,mention_file))
     docs = []
-    doc_iter = WnedDataLoader(text_path, mention_fname=mention_path, lowercase=lowercase)
+    doc_iter = WnedDataLoader(text_path, mention_file, include_unresolved=include_unresolved, lowercase=lowercase)
     for doc in doc_iter.documents():
         docs.append(doc)
     return docs
 
 if __name__ == "__main__":
     # Demo:
-    docs = WnedDataLoader('/Users/ethan/Downloads/WNED/wned-datasets/ace2004/RawText/', '/Users/ethan/Downloads/WNED/wned-datasets/ace2004/ace2004.xml')
-    for doc_name, doc in docs.documents():
-        print(doc.sentences)
-        for mention in doc.mentions:
-            print(mention.mention_text())
-            print(mention.right_context(max_len=5))
-        break
+    docs = load_data(text_path='/home/caoyx/data/WNED/wned-datasets/ace2004/RawText/',
+                     mention_file='/home/caoyx/data/WNED/wned-datasets/ace2004/ace2004.xml')
+    print(docs[0].doc_name)
+    print(docs[0].mentions)
+    print(docs[0].tokens)

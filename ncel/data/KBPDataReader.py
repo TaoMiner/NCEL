@@ -2,7 +2,6 @@ import codecs
 import regex as re
 import string
 import os
-import copy
 from pycorenlp import StanfordCoreNLP
 import json as simplejson
 import jieba
@@ -11,7 +10,7 @@ try:
 except ImportError:
     import xml.etree.ElementTree as ET
 
-# jieba.set_dictionary('/home/caoyx/data/dict.txt.big')
+jieba.set_dictionary('/home/caoyx/data/dict.txt.big')
 
 xmlDefRE = re.compile(r'<?xml.*?>')
 textHeadRE = re.compile(r'<TEXT>|<HEADLINE>')

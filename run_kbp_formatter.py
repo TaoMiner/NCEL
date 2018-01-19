@@ -10,15 +10,18 @@ def getKBPOutRootPath():
     return '/home/caoyx/data/kbp/kbp_cl/'
 
 def getKbpOutTextPath(year, isEval, lang, docType):
-    tmp_path = getKBPOutRootPath() + 'kbp15/' if year == 2015 else 'kbp16/'
+    tmp_path = getKBPOutRootPath()
+    tmp_path += 'kbp15/' if year == 2015 else 'kbp16/'
+    tmp_path += lang + '/'
     tmp_path += 'eval/' if isEval else 'train/'
-    tmp_path += lang + '/' + docType + '/'
+    tmp_path += docType + '/'
     return tmp_path
 
 def getKbpOutXmlFile(year, isEval, lang, docType):
-    tmp_path = getKBPOutRootPath() + 'kbp15/' if year == 2015 else 'kbp16/'
-    tmp_path += 'eval/' if isEval else 'train/'
+    tmp_path = getKBPOutRootPath()
+    tmp_path += 'kbp15/' if year == 2015 else 'kbp16/'
     tmp_path += lang + '/'
+    tmp_path += 'eval/' if isEval else 'train/'
     tmp_filename = 'kbp15_' if year == 2015 else 'kbp16_'
     tmp_filename += docType + '_gold.xml'
     return tmp_path + tmp_filename
@@ -61,4 +64,5 @@ if __name__ == "__main__":
             if year == 2016 and not isEval : continue
             for lang in LANG:
                 for docType in DOC_TYPE:
+                    print("preprocessing {0}, {1}, {2}, {3}".format(year, 'eval' if isEval else 'train', lang, docType))
                     formatKBP15(year, isEval, lang, docType)

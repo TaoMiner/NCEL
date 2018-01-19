@@ -18,22 +18,29 @@ def _xlwikiFileToDocIterator(fpath):
         mention_lines = f_mention.readlines()
         yield (file_name, txt_lines, mention_lines)
 
+en_punctuation = " \'\",:()\-\n"
+zh_punctuation = " ·＂＃＄％＆＇（）＊＋，－／：；＜＝＞＠［＼］＾＿｀｛｜｝～｟｠｢｣､、〃》「」『』【】〔〕〖〗〘〙〚〛〜〝〞〟〰〾〿–—‘’‛“”„‟…‧﹏"
+en_sent_split_punc = "\.?!"
+zh_ssplit_punc = "！？｡。"
+punction = '[{0}{1}]'.format(en_punctuation, zh_punctuation)
+ssplict_puncRE = re.compile('[{0}{1}]'.format(en_sent_split_punc, zh_ssplit_punc))
+
 class XlwikiDataLoader():
-    # degree indicates how difficult the mention is, -1 : all, 0 : easy, 1 : hard
-    def __init__(self, path, degree=-1, include_unresolved=False, lowercase=False):
+    # genre indicates how difficult the mention is, 0 : easy, 1 : hard, 2 : all
+    def __init__(self, path, genre=2, lowercase=False):
         self._fpath = path
-        self._include_unresolved = include_unresolved
         self.lowercase = lowercase
-        self.is_hard = degree
+        self.is_hard = genre
 
     def _processLineSlice(self, line_slice, doc, sent):
         # split words in line slice
         # preprocess
-        raw_tokens = re.split(r'[ \'",:()\-\n]', line_slice)
+        raw_tokens = re.split(punction, line_slice)
 
         for rt in raw_tokens:
             if len(rt) < 1 : continue
-            dot_idx = rt.find('.')
+            m = ssplict_puncRE.search(rt)
+            dot_idx = m.start() if m else -1
             if dot_idx < 0 :
                 sent.append(rt)
                 doc.tokens.append(rt)
@@ -69,7 +76,7 @@ class XlwikiDataLoader():
                 doc_start_inx = int(items[0])
                 doc_end_inx = int(items[1])
                 is_hard = int(items[4])
-                if self.is_hard != -1 and is_hard != self.is_hard : continue
+                if self.is_hard in [0, 1] and is_hard != self.is_hard : continue
                 split_inx.add(doc_start_inx)
                 split_inx.add(doc_end_inx)
                 start_inx[doc_start_inx] = start_inx.get(doc_start_inx, [])
@@ -123,20 +130,18 @@ class XlwikiDataLoader():
                 del sent[:]
             yield (doc_name, doc)
 
-def load_data(path, degree=-1, lowercase=False):
-    print("Loading", path)
+def load_data(text_path=None, mention_file=None, kbp_id2wikiid_file=None, genre=0, include_unresolved=False, lowercase=False):
+    assert not isinstance(type(text_path), None), "xlwiki data requires raw path!"
+    print("Loading", text_path)
     docs = []
-    doc_iter = XlwikiDataLoader(path, degree=degree, lowercase=lowercase)
+    doc_iter = XlwikiDataLoader(text_path, genre=genre, lowercase=lowercase)
     for doc in doc_iter.documents():
         docs.append(doc)
     return docs
 
 if __name__ == "__main__":
     # Demo:
-    docs = XlwikiDataLoader('/Users/ethan/Downloads/xlwikifier-wikidata/data/it/train/')
-    for doc_name, doc in docs.documents():
-        print(doc.sentences)
-        for mention in doc.mentions:
-            print(mention.mention_text())
-            print(mention.right_context(max_len=5))
-        break
+    docs = load_data(text_path='/Users/ethan/Downloads/xlwikifier-wikidata/data/it/train/')
+    print(docs[0].doc_name)
+    print(docs[0].mentions)
+    print(docs[0].tokens)

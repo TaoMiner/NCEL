@@ -4,13 +4,11 @@ except ImportError:
     import xml.etree.ElementTree as ET
 
 class xmlHandler():
-    def __init__(self):
+    def __init__(self, txt_elem_list, int_elem_list):
         self.doc_name = ""
         self.annotations = []
-        self.mention = ""
-        self.wiki_name = ""
-        self.offset = -1
-        self.length = -1
+        self._txt_elem_list = txt_elem_list
+        self._int_elem_list = int_elem_list
 
     def process(self, filename):
         path = []
@@ -32,14 +30,10 @@ class xmlHandler():
                         path.pop()
                         elem.clear()  # disgrad elem
                     if 'annotation' in path:
-                        if elem.tag == 'mention':
-                            annotation['mention'] = elem.text
-                        elif elem.tag == 'wikiName':
-                            annotation['wiki_name'] = elem.text
-                        elif elem.tag == 'offset':
-                            annotation['offset'] = int(elem.text)
-                        elif elem.tag == 'length':
-                            annotation['length'] = int(elem.text)
+                        if elem.tag in self._txt_elem_list:
+                            annotation[elem.tag] = elem.text
+                        elif elem.tag in self._int_elem_list:
+                            annotation[elem.tag] = int(elem.text)
                         elif elem.tag == 'annotation':
                             self.annotations.append(annotation)
                             path.pop()
