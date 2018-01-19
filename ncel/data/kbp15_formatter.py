@@ -46,5 +46,5 @@ if __name__ == "__main__":
     query_file = '/home/caoyx/data/kbp/LDC2017E03_TAC_KBP_Entity_Discovery_and_Linking_Comprehensive_Training_and_Evaluation_Data_2014-2016/data/2015/eval/tac_kbp_2015_tedl_evaluation_gold_standard_entity_mentions.tab'
     text_path = '/home/caoyx/data/kbp/LDC2017E03_TAC_KBP_Entity_Discovery_and_Linking_Comprehensive_Training_and_Evaluation_Data_2014-2016/data/2015/eval/source_documents/eng/discussion_forum/'
     kbp2wiki_id_map = '/home/caoyx/data/kbp/id.key2015'
-    kf = kbp15Formatter(text_path, query_file, DATA_TYPE[0], lang='eng')
+    kf = kbp15Formatter(text_path, query_file, '2015', lang='eng')
     kf.format('/home/caoyx/data/kbp/kbp_cl/kbp15/eval/eng/df/', '/home/caoyx/data/kbp/kbp_cl/kbp15/eval/eng/kbp15_df.xml')

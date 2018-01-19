@@ -32,8 +32,6 @@ class Doc:
         self.text = []          # [w, ..., w] token lists
         self.mentions = []      # [[w_index, mention_lenth, ent_id, ment_str], ...]
 
-DATA_TYPE = ('15', '16df', '16nw')
-
 class DataReader:
     def __init__(self):
         self.lang = ''
@@ -105,9 +103,9 @@ class DataReader:
     def readKbp(self, text_path, mentions, data_type):
         files = os.listdir(text_path)
         corpus = []
-        if data_type == DATA_TYPE[0]:
+        if data_type.startswith('2015'):
             extract = self.extractKBP15Text
-        elif data_type == DATA_TYPE[1]:
+        elif data_type.endswith('df'):
             extract = self.extractKBP16DfText
         else :
             extract = self.extractKBP16NwText
