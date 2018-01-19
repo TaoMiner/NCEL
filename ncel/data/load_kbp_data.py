@@ -17,4 +17,3 @@ class KbpDataLoader(xmlHandler):
             doc_name = doc_name if postfix_inf == -1 else doc_name[:postfix_inf]
             all_mentions[doc_name] = mentions.copy()
         i=0
-        for (doc_name, doc_lines) in _WnedFileToDocIterator(self._fpath):
