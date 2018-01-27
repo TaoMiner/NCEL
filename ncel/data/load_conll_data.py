@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from ncel.utils.document import *
+import re
 
 DOC_GENRE = ('testa', 'testb', 'train')
 
@@ -25,28 +26,6 @@ def _CoNLLFileToDocIterator(fname, split='testa'):
     if curdocName is not None and curdocSplit == split:
         yield (curdoc, curdocName)
 
-
-def _CoNLLRawToTuplesIterator(lines):
-    '''
-    yields tuples:
-    (surface,ismention,islinked,YAGO2,WikiURL,WikiId,FB)
-    surface is either a word or the full mention
-    '''
-    for line in lines:
-        if len(line) == 0:
-            # sentence boundary.
-            continue
-        t = line.split('\t')
-        if len(t) == 1:
-            yield (t[0], t[0], False, None, None, None, None, None)
-        else:
-            if t[1] != 'B':
-                continue
-            if t[3] == '--NME--':
-                yield (t[2], True, False, None, None, None, None)
-            else:
-                yield (t[2], True, True, t[3], t[4], int(t[5]), t[6] if len(t) >= 7 else None)
-
 class CoNLLIterator:
     # genre \in [0, 1, 2] indicates ['testa', 'testb', 'train']
     def __init__(self, fname, genre=0, include_unresolved=False, lowercase=False):
@@ -64,15 +43,13 @@ class CoNLLIterator:
             mention = None
             sent = []
             for line in doc_lines:
-                if self.lowercase:
-                    line = line.lower()
                 if len(line) == 0:
                     # sentence boundary.
                     doc.sentences.append(sent)
                     sent = []
                     continue
                 t = line.split('\t')
-
+                if self.lowercase: t[0] = t[0].lower()
                 sent.append(t[0])
                 doc.tokens.append(t[0])
                 if len(t) == 1:
@@ -85,18 +62,19 @@ class CoNLLIterator:
 
                 if t[1] == 'B' and (t[3] != '--NME--' or self._include_unresolved):
                     if t[3] != '--NME--':
-                        gold_ent_str = t[3]
+                        gold_ent_str = re.sub(r'_', ' ', t[3])
                         gold_ent_id = t[5]
                         mention = Mention(doc, len(doc.tokens) - 1, len(doc.tokens),
                                           gold_ent_id=gold_ent_id, gold_ent_str=gold_ent_str)
                     else:
                         mention = Mention(doc, len(doc.tokens) - 1, len(doc.tokens), is_NIL=True)
                     doc.mentions.append(mention)
-
+            for i, m in enumerate(doc.mentions):
+                doc.mentions[i].setStrAndLength()
             yield doc
 
     def mentions(self):
-        for (doc, doc_genre) in self.documents():
+        for doc in self.documents():
             for mention in doc.mentions:
                 yield mention
 

@@ -18,8 +18,8 @@ class Mention:
         self._gold_ent_id = gold_ent_id
         self._gold_ent_str = gold_ent_str
 
-        self._mention_length = mention_end - mention_start
-        self._mention_str = self.mention_text()
+        self._mention_length = None
+        self._mention_str = None
 
         self._sent_idx = None
         self._pos_in_sent = None
@@ -33,6 +33,10 @@ class Mention:
 
         self._is_trainable = True
         self._is_NIL = is_NIL
+
+    def setStrAndLength(self):
+        self._mention_str = self.mention_text()
+        self._mention_length = self._mention_end - self._mention_start
 
     def updateSentIdxByTokenIdx(self):
         token_count = 0

@@ -54,9 +54,9 @@ def get_data_manager(data_type):
         data_manager = load_conll_data
     elif data_type in ["kbp10", "kbp15", "kbp16"]:
         data_manager = load_kbp_data
-    if data_type in ["msnbc", "aquaint", "ace04", "wiki13", "clueweb12"]:
+    elif data_type in ["msnbc", "aquaint", "ace04", "wiki13", "clueweb12"]:
         data_manager = load_wned_data
-    if data_type == "xlwiki":
+    elif data_type == "xlwiki":
         data_manager = load_xlwiki_data
     else:
         raise NotImplementedError
@@ -143,18 +143,15 @@ def load_data_and_embeddings(
 
     candidate_handler = candidate_manager(FLAGS.candidates_file, vocab=mention_vocab, lowercase=FLAGS.lowercase)
     candidate_handler.loadCandiates()
+    logger.Log("Load "+ str(candidate_handler._candidates_total) + " candidates for "
+               + str(len(candidate_handler._mention_dict)) + " mention types!")
     candidate_handler.loadPrior(FLAGS.entity_prior_file)
     id2wiki_vocab = candidate_handler.loadWikiid2Label(FLAGS.wiki_entity_vocab,
-                                       id_vocab=candidate_handler.candidate_entities)
+                                       id_vocab=candidate_handler._candidate_entities)
 
-    entity_vocab = BuildEntityVocabulary(candidate_handler.candidate_entities,
+    entity_vocab = BuildEntityVocabulary(candidate_handler._candidate_entities,
                                          FLAGS.entity_embedding_file, FLAGS.sense_embedding_file,
                                             logger=logger)
-    # update mention candidates
-    topn_candidates = FLAGS.max_mention_candidate if FLAGS.max_mention_candidate>0 else None
-    AddCandidatesToDocs(raw_training_data, raw_eval_sets, candidate_handler,
-                        vocab=entity_vocab, topn=topn_candidates,
-                        include_unresolved=FLAGS.include_unresolved)
 
     # Load pretrained embeddings.
     logger.Log("Loading vocabulary with " + str(len(word_vocab))
@@ -177,12 +174,17 @@ def load_data_and_embeddings(
                  str_sim=FLAGS.str_sim, prior=FLAGS.prior, hasAtt=FLAGS.att,
                  local_context_window=FLAGS.local_context_window,
                   global_context_window=FLAGS.global_context_window)
+    # update mention candidates
+    topn_candidates = FLAGS.max_candidates_per_document if FLAGS.max_candidates_per_document > 0 else None
 
     # Trim dataset, convert token sequences to integer sequences, crop, and
     # pad. construct data iterator
     logger.Log("Preprocessing data.")
     eval_sets = []
     for i, raw_eval_data in enumerate(raw_eval_sets):
+        AddCandidatesToDocs(raw_eval_sets[i], candidate_handler,
+                            vocab=entity_vocab, topn=topn_candidates,
+                            include_unresolved=FLAGS.include_unresolved)
         eval_data = PreprocessDataset(raw_eval_sets[i],
                                       word_vocab,
                                       entity_vocab,
@@ -197,6 +199,9 @@ def load_data_and_embeddings(
     training_data_iter = None
     training_data_length = 0
     if raw_training_data is not None:
+        AddCandidatesToDocs(raw_training_data, candidate_handler,
+                            vocab=entity_vocab, topn=topn_candidates,
+                            include_unresolved=FLAGS.include_unresolved)
         training_data = PreprocessDataset(raw_training_data,
                                           word_vocab,
                                           entity_vocab,
@@ -328,8 +333,8 @@ def get_flags():
     gflags.DEFINE_integer("doc_length", 100, "")
     gflags.DEFINE_integer("max_candidates_per_document", 200, "")
     gflags.DEFINE_integer("topn_candidate", 20, "Use all candidates if set 0.")
-    gflags.DEFINE_enum("genre", 1, [0, 1, 2], "For conll, [testa, testb, all] for evaluation,"
-                                              "For xlwiki, [easy, hard, all].")
+    gflags.DEFINE_integer("genre", 1, "For conll, [0:testa, 1:testb, 2:all] for evaluation, "
+                                      "For xlwiki, [0:easy, 1:hard, 2:all].")
 
     # KBP data
     gflags.DEFINE_string(
@@ -351,13 +356,6 @@ def get_flags():
     gflags.DEFINE_boolean( "smart_batching", True, "Organize batches using sequence length.")
     gflags.DEFINE_boolean("fine_tune_loaded_embeddings", False,
                           "If set, backpropagate into embeddings even when initializing from pretrained.")
-    gflags.DEFINE_integer("ckpt_interval_steps", 5000,
-                          "Update the checkpoint on disk at this interval.")
-    gflags.DEFINE_boolean(
-        "ckpt_on_best_dev_error",
-        True,
-        "If error on the first eval set (the dev set) is "
-        "at most 0.99 of error at the previous checkpoint, save a special 'best' checkpoint.")
 
     # Evaluation settings
     gflags.DEFINE_boolean("lowercase", True, "When True, ignore case.")
@@ -371,7 +369,7 @@ def get_flags():
     gflags.DEFINE_boolean(
         "eval_only_mode_use_best_checkpoint",
         True,
-        "When in expanded_eval_only_mode, load the ckpt_best checkpoint.")
+        "When in eval_only_mode, load the ckpt_best checkpoint.")
     gflags.DEFINE_integer(
         "cross_validation",
         -1,

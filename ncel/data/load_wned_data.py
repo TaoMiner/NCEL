@@ -145,10 +145,12 @@ class WnedDataLoader(xmlHandler):
                 if len(sent) > 0:
                     doc.sentences.append(sent)
                 sent = []
+            for i, m in enumerate(doc.mentions):
+                doc.mentions[i].setStrAndLength()
             yield doc
 
     def mentions(self):
-        for (doc_name, doc) in self.documents():
+        for doc in self.documents():
             for mention in doc.mentions:
                 yield mention
 

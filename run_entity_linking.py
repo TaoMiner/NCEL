@@ -15,4 +15,4 @@ if __name__ == '__main__':
     # Parse command line flags.
     FLAGS(sys.argv)
     flag_defaults(FLAGS)
-    entity_linking.run(only_forward=FLAGS.expanded_eval_only_mode)
+    entity_linking.run(only_forward=FLAGS.eval_only_mode)

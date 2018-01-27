@@ -45,7 +45,7 @@ class FeatureGenerator:
         return features
 
     def getCandidateBaseFeature(self, candidate, num_candidates, max_prior):
-        # 1* feature_num
+        # base feature_num
         features = []
         m_label = candidate.mention
         # number of candidates
@@ -74,8 +74,6 @@ class FeatureGenerator:
 
     def buildContextFeature(self, doc):
         feature = []
-        # sents_embed: sent_length * embedding_dim
-        sents_embed = self.docEmbed(doc.sentences) if self._global_window != -1 else None
 
         for mention in doc.mentions:
             lc_emb = None
@@ -116,7 +114,7 @@ class FeatureGenerator:
                     right_mu_global_emb = self.getAttSentEmbed(cand_mu_emb, rs_emb)
                     tmp_f.extend([left_sense_global_emb, left_mu_global_emb,
                                   right_sense_global_emb, right_mu_global_emb])
-                feature.append(np.concatenate((tmp_f), axis=1))
+                feature.append(np.concatenate(tmp_f, axis=0))
 
         return np.array(feature)
 
@@ -142,7 +140,7 @@ class FeatureGenerator:
         return sent_embed
 
     def docEmbed(self, sents):
-        embeds = np.concatenate((self.sentEmbed(x) for x in sents if len(x)>0), axis=0)
+        embeds = np.array([self.sentEmbed(x) for x in sents if len(x)>0])
         return embeds
 
     def getCandidateAndGoldIds(self, doc):

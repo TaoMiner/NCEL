@@ -87,3 +87,18 @@ def ComputeMentionAccuracy(output, y, max_candidates, docs, NIL_thred=0.1):
         total_mention_correct += dm_correct
         doc_acc += dm_correct/float(len(doc.mentions))
     return total_mentions, total_mention_correct, batch_docs, doc_acc/float(batch_docs)
+
+def inspectDoc(doc, word_vocab):
+    word_label_vocab = dict(
+        [(word_vocab[key], key) for key in word_vocab if key in word_vocab])
+    tokens = [word_label_vocab[t] for t in doc.tokens]
+    print(tokens)
+    for m in doc.mentions:
+        sent_ids = doc.sentences[m._sent_idx][m._pos_in_sent:m._pos_in_sent+m._mention_length]
+        print("ment_str:{}, m_len:{}, m_pos:{}, m_sent_pos:{}.".format(m._mention_str, m._mention_length,
+             ' '.join(tokens[m._mention_start:m._mention_end]),
+             ' '.join([word_label_vocab[s] for s in sent_ids])))
+        print("left_contexts:{}.".format(' '.join([word_label_vocab[w] for w in m.left_context(max_len=5)])))
+        print("right_contexts:{}.".format(' '.join([word_label_vocab[w] for w in m.right_context(max_len=5)])))
+        print("left_sent:{}.".format(' '.join([word_label_vocab[w] for s in m.left_sent(max_len=1) for w in s])))
+        print("right_sent:{}.".format(' '.join([word_label_vocab[w] for s in m.right_sent(max_len=1) for w in s])))

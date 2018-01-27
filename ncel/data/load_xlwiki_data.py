@@ -138,6 +138,8 @@ class XlwikiDataLoader():
                 if len(sent) > 0:
                     doc.sentences.append(sent)
                 sent = []
+            for i, m in enumerate(doc.mentions):
+                doc.mentions[i].setStrAndLength()
             yield doc
 
 def load_data(text_path=None, mention_file=None, kbp_id2wikiid_file=None, genre=0,

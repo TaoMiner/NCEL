@@ -8,6 +8,7 @@ import struct
 import re
 
 import numpy as np
+from ncel.utils.misc import inspectDoc
 
 PADDING_TOKEN = "_PAD"
 # UNK must be existed in pre-trained embeddings
@@ -67,20 +68,16 @@ class SimpleProgressBar(object):
         self.reset()
         sys.stdout.write('\n')
 
-def AddCandidatesToDocs(raw_training_data, raw_eval_sets, candidate_handler, vocab=None, topn=None,
+def AddCandidatesToDocs(dataset, candidate_handler, vocab=None, topn=None,
                         include_unresolved=False):
-    datasets = []
-    if raw_training_data is not None:
-        datasets.append(raw_training_data)
-    datasets.extend(raw_eval_sets)
-    for i, corpus in enumerate(datasets):
-        for j, doc in enumerate(corpus):
-            candidate_handler.add_candidates_to_document(datasets[i][j], vocab=vocab, topn=topn)
-            for k, mention in enumerate(doc.mentions):
-                if not mention._is_trainable : continue
-                if (not mention._is_NIL and mention.gold_ent_id() not in mention.candidates) or (
-                            not include_unresolved and len(mention.candidates) < 1):
-                    datasets[i][j].mentions[k]._is_trainable = False
+    for i, doc in enumerate(dataset):
+        candidate_handler.add_candidates_to_document(dataset[i], vocab=vocab, topn=topn)
+        for j, mention in enumerate(doc.mentions):
+            if not mention._is_trainable : continue
+            if (not mention._is_NIL and mention.gold_ent_id() not in [c.id for c in mention.candidates]) or (
+                        not include_unresolved and len(mention.candidates) < 1):
+                dataset[i].mentions[j]._is_trainable = False
+                dataset[i].n_candidates -= len(dataset[i].mentions[j].candidates)
 
 def BuildVocabulary(raw_training_data, raw_eval_sets, word_embedding_path, logger=None):
     # Find the set of words that occur in the data.
@@ -98,7 +95,7 @@ def BuildVocabulary(raw_training_data, raw_eval_sets, word_embedding_path, logge
             words_in_data.update(doc.tokens)
             for k, mention in enumerate(doc.mentions):
                 if not mention._is_trainable : continue
-                mentions_in_data.update(mention.mention_text)
+                mentions_in_data.add(mention._mention_str)
                 datasets[i][j].mentions[k].updateSentIdxByTokenIdx()
         # update mention sent index
 
@@ -266,7 +263,7 @@ def TrimDataset(dataset, seq_length, doc_length, max_candidates, logger=None, al
                 " candidate over-length documents.")
         return croped_dataset
 
-def TokensToIDs(word_vocabulary, entity_vocabulary, dataset, logger=None, include_unresolved=False):
+def TokensToIDs(word_vocabulary, entity_vocabulary, dataset, max_candidates, logger=None, include_unresolved=False):
     """Replace strings in original boolean dataset with token IDs."""
 
     tokens = 0
@@ -280,6 +277,8 @@ def TokensToIDs(word_vocabulary, entity_vocabulary, dataset, logger=None, includ
     c_unk = 0
     nil_num = 0
     g_unk = 0
+    cropped_m = 0
+    cropped_d = 0
 
     if UNK_TOKEN in CORE_VOCABULARY:
         unk_id = CORE_VOCABULARY[UNK_TOKEN]
@@ -301,55 +300,8 @@ def TokensToIDs(word_vocabulary, entity_vocabulary, dataset, logger=None, includ
                     dataset[i].sentences[j][k] = unk_id
                     unks += 1
                 tokens += 1
-        # candidates to id, candidates is an ordered list of Candidate()
-        for j, mention in enumerate(doc.mentions):
-            m_num += 1
-            if not mention._is_trainable :
-                m_unk += 1
-                continue
-            new_candidates = []
-            for k, cand in enumerate(mention.candidates):
-                c_num += 1
-                if cand.id in entity_vocabulary:
-                    cand.id = entity_vocabulary[cand.id]
-                    new_candidates.append(cand)
-                else:
-                    c_unk += 1
-            dataset[i].mentions[j].candidates = new_candidates
-            if include_unresolved and mention._is_NIL:
-                mention._gold_ent_id = unk_id
-                nil_num += 1
-            elif isinstance(mention.gold_ent_id(), type(None)) or \
-                            mention.gold_ent_id() not in entity_vocabulary or \
-                            mention.gold_ent_id() not in new_candidates :
-                mention._is_trainable = False
-                g_unk += 1
-            else:
-                dataset[i].mentions[j]._gold_ent_id = entity_vocabulary[mention.gold_ent_id()]
-        # filter out cannot trainable mentions
-        dataset[i].mentions = [mention for mention in doc.mentions if mention._is_trainable]
-
-    print("Unk rate {:2.6f}%, downcase rate {:2.6f}%, upcase rate {:2.6f}%".format(
-        (unks * 100.0 / tokens), (lowers * 100.0 / tokens), (raises * 100.0 / tokens)))
-    if logger:
-        logger.Log("Unk rate {:2.6f}%, downcase rate {:2.6f}%, upcase rate {:2.6f}%".format(
-        (unks * 100.0 / tokens), (lowers * 100.0 / tokens), (raises * 100.0 / tokens)))
-    print("Untrainable rate {:2.6f}% ({}/{}), "
-          "Unk candidate rate {:2.6f}% ({}/{}), "
-          "Unk gold rate {:2.6f}% ({}/{}), "
-          "NIL rate {:2.6f}% ({}/{}) !".format((m_unk*100.0/m_num),
-             m_unk, m_num, (c_unk*100.0/c_num), c_unk, c_num,
-             (g_unk * 100.0 / m_num), g_unk, m_num, (nil_num * 100.0 / m_num), nil_num, m_num))
-    if logger:
-        logger.Log("Untrainable rate {:2.6f}% ({}/{}), "
-          "Unk candidate rate {:2.6f}% ({}/{}), "
-          "Unk gold rate {:2.6f}% ({}/{}), "
-          "NIL rate {:2.6f}% ({}/{}) !".format((m_unk*100.0/m_num),
-             m_unk, m_num, (c_unk*100.0/c_num), c_unk, c_num,
-             (g_unk * 100.0 / m_num), g_unk, m_num, (nil_num * 100.0 / m_num), nil_num, m_num))
-
-    # filter unk tokens if not assign id in vocab
-    if unk_id == -1 :
+                # filter unk tokens if not assign id in vocab
+    if unk_id == -1:
         for i, doc in enumerate(dataset):
             # new sents filter out unk at token level, keep empty sents
             empty_sent_count = 0
@@ -360,14 +312,16 @@ def TokensToIDs(word_vocabulary, entity_vocabulary, dataset, logger=None, includ
                 if len(sent) == 0: empty_sent_count += 1
 
             for j, mention in enumerate(doc.mentions):
-                if not mention._is_trainable : continue
-                # todo: or short mention._mention_length
+                if not mention._is_trainable: continue
                 sent = doc.sentences[mention._sent_idx]
+                if len(new_sents[mention._sent_idx]) == 0:
+                    dataset[i].mentions[j]._is_trainable = False
+                    dataset[i].n_candidates -= len(dataset[i].mentions[j].candidates)
+                    continue
                 mt_unks = 0
-                for t in sent[mention._pos_in_sent:mention._pos_in_sent+mention._mention_length]:
-                    mt_unks += 1
-                if mt_unks > 0:
-                    dataset[i].mentions[j]._mention_length -= mt_unks
+                for t in sent[mention._pos_in_sent:mention._pos_in_sent + mention._mention_length]:
+                    if t == unk_id: mt_unks += 1
+                if mt_unks > 0: dataset[i].mentions[j]._mention_length -= mt_unks
                 # update mention sent index by new sents
                 empty_token_in_sent = 0
                 for t in sent[:mention._pos_in_sent]:
@@ -379,9 +333,71 @@ def TokensToIDs(word_vocabulary, entity_vocabulary, dataset, logger=None, includ
             # update mention offset of tokens
             for j, mention in enumerate(doc.mentions):
                 dataset[i].mentions[j].updateTokenIdxBySentIdx()
-    return dataset
+            # update doc tokens
+            doc.tokens = [t for s in dataset[i].sentences for t in s]
 
-def CropAndPadDocument(
+    for i, doc in enumerate(dataset):
+        for j, mention in enumerate(doc.mentions):
+            m_num += 1
+            if not mention._is_trainable :
+                m_unk += 1
+                continue
+            # replace gold id
+            if include_unresolved and mention._is_NIL:
+                mention._gold_ent_id = unk_id
+                nil_num += 1
+            elif isinstance(mention.gold_ent_id(), type(None)) or \
+                            mention.gold_ent_id() not in entity_vocabulary or \
+                            mention.gold_ent_id() not in [c.id for c in mention.candidates] :
+                mention._is_trainable = False
+                dataset[i].n_candidates -= len(mention.candidates)
+                g_unk += 1
+            else:
+                dataset[i].mentions[j]._gold_ent_id = entity_vocabulary[mention.gold_ent_id()]
+            # replace candidate id
+            new_candidates = []
+            for k, cand in enumerate(mention.candidates):
+                c_num += 1
+                if cand.id in entity_vocabulary:
+                    cand.id = entity_vocabulary[cand.id]
+                    new_candidates.append(cand)
+                else:
+                    c_unk += 1
+            dataset[i].mentions[j].candidates = new_candidates
+
+        # crop candidate over length doc by make mention intrainable
+        candidate_length_set = [[m_idx, len(m.candidates)] for m_idx, m in enumerate(doc.mentions)]
+        if doc.n_candidates > max_candidates:
+            cropped_d += 1
+            c2s_ms = sorted(candidate_length_set, key=lambda x: x[1], reverse=True)
+            diff = doc.n_candidates - max_candidates
+            p = -1
+            while diff > 0:
+                p += 1
+                if not dataset[i].mentions[c2s_ms[p][0]]._is_trainable : continue
+                dataset[i].mentions[c2s_ms[p][0]]._is_trainable = False
+                cropped_m += 1
+                tmp_clen = len(doc.mentions[c2s_ms[p][0]].candidates)
+                diff -= tmp_clen
+                dataset[i].n_candidates -= tmp_clen
+        # filter out cannot trainable mentions
+        dataset[i].mentions = [mention for mention in doc.mentions if mention._is_trainable]
+    cropped_dataset = [doc for doc in dataset if doc.n_candidates > 0]
+
+    if logger:
+        logger.Log("Unk rate {:2.6f}%, downcase rate {:2.6f}%, upcase rate {:2.6f}%".format(
+        (unks * 100.0 / tokens), (lowers * 100.0 / tokens), (raises * 100.0 / tokens)))
+        logger.Log("Untrainable rate {:2.6f}% ({}/{}), "
+          "Unk candidate rate {:2.6f}% ({}/{}), "
+          "Unk gold rate {:2.6f}% ({}/{}), "
+          "NIL rate {:2.6f}% ({}/{}) !".format((m_unk*100.0/m_num),
+             m_unk, m_num, (c_unk*100.0/c_num), c_unk, c_num,
+             (g_unk * 100.0 / m_num), g_unk, m_num, (nil_num * 100.0 / m_num), nil_num, m_num))
+        logger.Log("Actual cropped {} mentions of {} documents! "
+                   "Remove {} empty docs!".format(cropped_m, cropped_d, len(dataset)-len(cropped_dataset)))
+    return cropped_dataset
+
+def PadDocument(
         x, candidate_ids, y,
         length,
         allow_cropping=True):
@@ -418,8 +434,9 @@ def PreprocessDataset(
         allow_cropping=False):
     dataset = TrimDataset(dataset, seq_length, doc_length, max_candidates,
                           logger=logger, allow_cropping=allow_cropping)
-    dataset = TokensToIDs(word_vocabulary, entity_vocabulary, dataset,
+    dataset = TokensToIDs(word_vocabulary, entity_vocabulary, dataset, max_candidates,
                           logger=logger, include_unresolved=include_unresolved)
+    inspectDoc(dataset[0], word_vocab=word_vocabulary)
     X = []
     Y = []
     All_candidates_ids = []
@@ -431,13 +448,14 @@ def PreprocessDataset(
         # x: doc.n_candidates * feature_dim
         # candidate_ids: doc.n_candidates
         # y: doc.n_candidates * 2
-        x, candidate_ids, y = CropAndPadDocument(x, candidate_ids, y, max_candidates, allow_cropping=allow_cropping)
+        x, candidate_ids, y = PadDocument(x, candidate_ids, y, max_candidates, allow_cropping=allow_cropping)
         X.append(x)
         Y.append(y)
         All_candidates_ids.append(candidate_ids)
         Num_candidates.append(num_candidate)
     # corpus_size * mention_num * candidate*num
-    return np.array(X), np.array(All_candidates_ids), np.array(Y), np.array(Num_candidates), dataset
+    # np.array of documents
+    return np.array(X), np.array(All_candidates_ids), np.array(Y), np.array(Num_candidates), np.array(dataset)
 
 def MakeTrainingIterator(
         sources,

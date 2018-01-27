@@ -17,8 +17,10 @@ class CandidatesHandler:
         self._mention_count = None
         self._wikiid2label = None
 
-    def loadWikiid2Label(self, filename):
-        _, self._wikiid2label = loadWikiVocab(filename)
+        self._candidates_total = 0
+
+    def loadWikiid2Label(self, filename, id_vocab=None):
+        _, self._wikiid2label = loadWikiVocab(filename, id_vocab=id_vocab)
         return self._wikiid2label
 
     def loadCandiates(self):
@@ -36,7 +38,10 @@ class CandidatesHandler:
                 tmp_cand = self._mention_dict.get(ment_name, {})
                 for c in items[1:]:
                     if c not in self._candidate_entities : self._candidate_entities[c] = 0
-                    if c not in tmp_cand : tmp_cand[c] = 0
+                    if c not in tmp_cand :
+                        tmp_cand[c] = 0
+                        self._candidates_total += 1
+                self._mention_dict[ment_name] = tmp_cand
 
     # enti_id \t gobal_prior \t cand_ment::=count \t ...
     def loadPrior(self, prior_file):
@@ -56,7 +61,7 @@ class CandidatesHandler:
                     tmp_count = int(tmp_items[1])
                     ent_anchor_num += tmp_count
                     if items[0] in self._mention_dict[tmp_items[0]]:
-                        self._mention_dict[tmp_items[0]] += tmp_count
+                        self._mention_dict[tmp_items[0]][items[0]] += tmp_count
                 self._candidate_entities[items[0]] = float(ent_anchor_num)
                 total_anchor_num += ent_anchor_num
         for ent in self._candidate_entities:
