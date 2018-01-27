@@ -91,7 +91,7 @@ def load_data_and_embeddings(
     # wned only one eval [path, file]
     raw_training_data = None
     if not FLAGS.eval_only_mode and FLAGS.cross_validation <= 0 :
-        if FLAGS.data_type in ["kbp15", "kbp16"]:
+        if FLAGS.data_type in ["kbp10", "kbp15", "kbp16"]:
             raw_training_data = []
             text_paths = FLAGS.training_text_path.split(':')
             mention_files = FLAGS.training_mention_file.split(':')
@@ -217,6 +217,7 @@ def load_data_and_embeddings(
         training_data_iter.append(MakeTrainingIterator(training_data, FLAGS.batch_size, FLAGS.smart_batching))
 
     if FLAGS.cross_validation > 0:
+        logger.Log("Creating cross validation batch iterators from eval data alone ...")
         # get both train_iter and eval_iter from eval data according to cur_validation
         training_data_iter, eval_iterators, training_data_length = MakeCrossIterator(eval_sets[0],
                                                                FLAGS.batch_size,
@@ -233,7 +234,7 @@ def load_data_and_embeddings(
         eval_iterators.append(eval_itset)
 
     feature_dim = feature_manager.getFeatureDim()
-
+    # print(feature_dim)
     vocabulary = (word_vocab, entity_vocab, id2wiki_vocab)
 
     return vocabulary, initial_embeddings, training_data_iter, eval_iterators, training_data_length, feature_dim

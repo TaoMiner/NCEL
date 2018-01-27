@@ -288,6 +288,7 @@ def run(only_forward=False):
             logger.LogEntry(log_entry)
     else:
         for cur_loop in range(total_loops):
+            logger.Log("Cross validation the {}/{} loop ...".format(cur_loop, total_loops))
             train_loop(
                 FLAGS,
                 model,

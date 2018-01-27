@@ -46,10 +46,12 @@ class WnedDataLoader(xmlHandler):
                 sent.append(rt)
                 doc.tokens.append(rt)
             elif dot_idx == 0:
-                doc.tokens.append(rt[dot_idx+1:])
-                doc.sentences.append(sent)
-                sent = []
-                sent.append(rt[dot_idx+1:])
+                if len(sent) > 0:
+                    doc.sentences.append(sent)
+                    sent = []
+                if len(rt) > 1 :
+                    doc.tokens.append(rt[dot_idx + 1:])
+                    sent.append(rt[dot_idx+1:])
             elif dot_idx == len(rt)-1:
                 doc.tokens.append(rt[:dot_idx])
                 sent.append(rt[:dot_idx])
@@ -62,6 +64,7 @@ class WnedDataLoader(xmlHandler):
                 doc.sentences.append(sent)
                 sent = []
                 sent.append(rt[dot_idx + 1:])
+        return sent
 
     def documents(self):
         all_mentions = dict()
@@ -94,9 +97,9 @@ class WnedDataLoader(xmlHandler):
                 start_inx[doc_start_inx].append(j)
                 end_inx[doc_end_inx] = end_inx.get(doc_end_inx, [])
                 end_inx[doc_end_inx].append(j)
-                # [_, _, new_start_offset, new_tokens_num]
+                # [_, _, new_start_offset, new_tokens_num, has_add_to_doc]
 
-                tmp_mentions[j] = [doc_mention['mention'], doc_mention['wikiName'], wiki_id, -1, -1]
+                tmp_mentions[j] = [doc_mention['mention'], doc_mention['wikiName'], wiki_id, -1, -1, False]
 
             # skip those don't have any mention
             if len(tmp_mentions) < 1: continue
@@ -123,10 +126,11 @@ class WnedDataLoader(xmlHandler):
                     if line_offset+base_offset in start_inx:
                         for j in start_inx[line_offset+base_offset]:
                             tmp_mentions[j][3] = len(doc.tokens)
-                    self._processLineSlice(line_slice, doc, sent)
+                    sent = self._processLineSlice(line_slice, doc, sent)
                     # update mention end index
                     if p + base_offset in end_inx:
                         for j in end_inx[p + base_offset]:
+                            if tmp_mentions[j][5]: continue
                             tmp_mentions[j][4] = len(doc.tokens)
                             if tmp_mentions[j][3] == -1 : continue
                             if tmp_mentions[j][2] == 'NIL':
@@ -135,12 +139,13 @@ class WnedDataLoader(xmlHandler):
                                 m = Mention(doc, tmp_mentions[j][3], tmp_mentions[j][4],
                                         gold_ent_id=tmp_mentions[j][2], gold_ent_str=tmp_mentions[j][1])
                             doc.mentions.append(m)
+                            tmp_mentions[j][5] = True
 
                     if p >= line_len : break
                     line_offset = p
                     split_inx_pos += 1
                 if split_inx_pos == len(split_inx) and line_offset < line_len:
-                    self._processLineSlice(line[line_offset:], doc, sent)
+                    sent = self._processLineSlice(line[line_offset:], doc, sent)
                 base_offset += line_len
                 if len(sent) > 0:
                     doc.sentences.append(sent)

@@ -111,8 +111,8 @@ class Mention:
 
     # t is a list of tokens
     def left_sent_iter(self):
-        if self._sent_idx > 0:
-            for t in self.document().sentences[self._sent_idx:: -1]:
+        if self._sent_idx-1 > 0:
+            for t in self.document().sentences[self._sent_idx-1:: -1]:
                 yield t
 
     def right_sent(self, max_len=None):
@@ -120,8 +120,8 @@ class Mention:
         return l if max_len is None or len(l) <= max_len else l[0:max_len]
 
     def right_sent_iter(self):
-        if self._sent_idx < len(self.document().sentences):
-            for t in self.document().sentences[self._sent_idx:]:
+        if self._sent_idx+1 < len(self.document().sentences):
+            for t in self.document().sentences[self._sent_idx+1:]:
                 yield t
 
 class Token:

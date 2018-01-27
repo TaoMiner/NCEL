@@ -48,10 +48,12 @@ class XlwikiDataLoader():
                 sent.append(rt)
                 doc.tokens.append(rt)
             elif dot_idx == 0:
-                doc.tokens.append(rt[dot_idx+1:])
-                doc.sentences.append(sent)
-                sent = []
-                sent.append(rt[dot_idx+1:])
+                if len(sent) > 0:
+                    doc.sentences.append(sent)
+                    sent = []
+                if len(rt) > 1 :
+                    doc.tokens.append(rt[dot_idx + 1:])
+                    sent.append(rt[dot_idx+1:])
             elif dot_idx == len(rt)-1:
                 doc.tokens.append(rt[:dot_idx])
                 sent.append(rt[:dot_idx])
@@ -64,6 +66,7 @@ class XlwikiDataLoader():
                 doc.sentences.append(sent)
                 sent = []
                 sent.append(rt[dot_idx + 1:])
+        return sent
 
     def documents(self):
         i = 0
@@ -92,8 +95,8 @@ class XlwikiDataLoader():
                 if not isinstance(self._wiki_label2id, type(None)) and \
                                 en_wiki_name not in self._wiki_label2id : continue
                 en_wiki_id = self._wiki_label2id[en_wiki_name]
-
-                tmp_mentions[j] = [en_wiki_name, en_wiki_id, foreign_wiki_name, -1, -1]
+                # [_, _, _, new_start_offset, new_tokens_num, has_add_to_doc]
+                tmp_mentions[j] = [en_wiki_name, en_wiki_id, foreign_wiki_name, -1, -1, False]
             # skip those don't have any mention
             if len(tmp_mentions) < 1 : continue
             # sort the slice inx
@@ -118,22 +121,24 @@ class XlwikiDataLoader():
                     if line_offset + base_offset in start_inx:
                         for j in start_inx[line_offset + base_offset]:
                             tmp_mentions[j][3] = len(doc.tokens)
-                    self._processLineSlice(line_slice, doc, sent)
+                    sent = self._processLineSlice(line_slice, doc, sent)
                     # update mention end index
                     if p + base_offset in end_inx:
                         for j in end_inx[p + base_offset]:
+                            if tmp_mentions[j][5]: continue
                             tmp_mentions[j][4] = len(doc.tokens)
                             if tmp_mentions[j][3] != -1:
                                 m = Mention(doc, tmp_mentions[j][3], tmp_mentions[j][4],
                                             gold_ent_id=tmp_mentions[j][1], gold_ent_str=tmp_mentions[j][0])
                                 m._gold_foreign_str = tmp_mentions[j][2]
                                 doc.mentions.append(m)
+                                tmp_mentions[j][5] = True
 
                     if p >= line_len: break
                     line_offset = p
                     split_inx_pos += 1
                 if split_inx_pos == len(split_inx) and line_offset < line_len:
-                    self._processLineSlice(line[line_offset:], doc, sent)
+                    sent = self._processLineSlice(line[line_offset:], doc, sent)
                 base_offset += line_len
                 if len(sent) > 0:
                     doc.sentences.append(sent)

@@ -2,6 +2,7 @@ from ncel.data import load_conll_data
 from ncel.data import load_xlwiki_data
 from ncel.data import load_kbp_data
 from ncel.data import load_wned_data
+from ncel.utils.misc import inspectDoc
 
 if __name__ == "__main__":
     # conll demo:
@@ -17,7 +18,6 @@ if __name__ == "__main__":
     #                 mention_file='/home/caoyx/data/kbp/kbp_cl/kbp16/eng/eval/kbp16_nw_gold.xml',
     #                 kbp_id2wikiid_file='/home/caoyx/data/kbp/kbp_cl/id.key2015')
 
-    print(docs[0].name)
-    for m in docs[0].mentions:
-        print("{0}, {1}, {2}, {3}".format(m._mention_start, m._mention_end, m._gold_ent_id, m._gold_ent_str))
-    print(docs[0].tokens)
+    for doc in docs:
+        inspectDoc(doc)
+        input("press any key to continue ...")
