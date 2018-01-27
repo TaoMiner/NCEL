@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 
 Really easy log parsing.
@@ -112,9 +113,9 @@ if __name__ == '__main__':
 
     print("Train:")
     for d in dtrain:
-        print(("Step: {} Acc: {}".format(d['step'], d['class_acc'])))
+        print(("Step: {} Acc: {} {} {}".format(d['step'], d['cand_acc'], d['ment_acc'], d['doc_acc'])))
     print()
 
     print("Eval:")
     for d in deval:
-        print(("Step: {} Acc: {}".format(d['step'], d['class_acc'])))
+        print(("Step: {} Acc: {} {} {}".format(d['step'], d['cand_acc'], d['ment_acc'], d['doc_acc'])))

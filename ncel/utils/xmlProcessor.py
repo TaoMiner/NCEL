@@ -1,9 +1,10 @@
+# -*- coding: utf-8 -*-
 try:
     import xml.etree.cElementTree as ET
 except ImportError:
     import xml.etree.ElementTree as ET
 
-class xmlHandler():
+class xmlHandler(object):
     def __init__(self, txt_elem_list, int_elem_list):
         self.doc_name = ""
         self.annotations = []
@@ -112,7 +113,7 @@ def buildXml(xml_file, doc_mentions):
 
 if __name__ == "__main__":
     # Demo:
-    xh = xmlHandler()
+    xh = xmlHandler(['mention', 'wikiName'], ['offset', 'length'])
     for doc_name, mentions in xh.process("/Users/ethan/Downloads/WNED/wned-datasets/ace2004/ace2004.xml"):
         print(doc_name)
         print(mentions)

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 logging.py
 
@@ -5,8 +6,6 @@ Log format convenience methods for training spinn.
 
 """
 
-import numpy as np
-from ncel.utils.blocks import flatten
 from ncel.utils.misc import time_per_token
 
 
@@ -29,147 +28,32 @@ class InspectModel(object):
 def inspect(model):
     return InspectModel(model)
 
-
-def train_accumulate(model, A, batch):
-
-    X_batch, transitions_batch, y_batch, num_transitions_batch, train_ids = batch
-    im = inspect(model)
-
-    # Accumulate stats for transition accuracy.
-    if im.has_transition_loss:
-        preds = [
-            m["t_preds"] for m in model.spinn.memories if m.get(
-                't_preds', None) is not None]
-        truth = [
-            m["t_given"] for m in model.spinn.memories if m.get(
-                't_given', None) is not None]
-        A.add('preds', preds)
-        A.add('truth', truth)
-
-    if im.has_invalid:
-        A.add('invalid', model.spinn.invalid)
-
-
-def train_rl_accumulate(model, A, batch):
-
-    im = inspect(model)
-
-    if im.has_policy:
-        A.add('policy_cost', model.policy_loss.data[0])
-
-    if im.has_value:
-        A.add('value_cost', model.value_loss.data[0])
-
-    A.add('adv_mean', model.stats['mean'])
-    A.add('adv_mean_magnitude', model.stats['mean_magnitude'])
-    A.add('adv_var', model.stats['var'])
-    A.add('adv_var_magnitude', model.stats['var_magnitude'])
-
-
 def stats(model, trainer, A, log_entry):
-    im = inspect(model)
-
-    if im.has_transition_loss:
-        all_preds = np.array(flatten(A.get('preds')))
-        all_truth = np.array(flatten(A.get('truth')))
-        avg_trans_acc = (all_preds == all_truth).sum() / \
-            float(all_truth.shape[0])
-
-    time_metric = time_per_token(A.get('total_tokens'), A.get('total_time'))
+    time_metric = time_per_token(A.get('total_candidates'), A.get('total_time'))
 
     log_entry.step = trainer.step
-    log_entry.class_accuracy = A.get_avg('class_acc')
-    log_entry.cross_entropy_cost = A.get_avg('xent_cost')  # not actual mean
+    log_entry.candidate_accuracy = A.get_avg('candidate_acc')
+    log_entry.mention_accuracy = A.get_avg('mention_acc')
+    log_entry.document_accuracy = A.get_avg('doc_acc')
+    log_entry.total_cost = A.get_avg('total_cost')  # not actual mean
     log_entry.learning_rate = trainer.learning_rate
     log_entry.time_per_token_seconds = time_metric
 
-    total_cost = log_entry.cross_entropy_cost
-    if im.has_transition_loss:
-        log_entry.transition_accuracy = avg_trans_acc
-        log_entry.transition_cost = model.transition_loss.data[0]
-        if model.optimize_transition_loss:
-            total_cost += log_entry.transition_cost
-    if im.has_invalid:
-        log_entry.invalid = A.get_avg('invalid')
-
-    adv_mean = np.array(A.get('adv_mean'), dtype=np.float32)
-    adv_mean_magnitude = np.array(
-        A.get('adv_mean_magnitude'), dtype=np.float32)
-    adv_var = np.array(A.get('adv_var'), dtype=np.float32)
-    adv_var_magnitude = np.array(A.get('adv_var_magnitude'), dtype=np.float32)
-
-    if im.has_policy:
-        log_entry.policy_cost = A.get_avg('policy_cost')
-        total_cost += log_entry.policy_cost
-    if im.has_value:
-        log_entry.value_cost = A.get_avg('value_cost')
-        total_cost += log_entry.value_cost
-
-    def get_mean(x):
-        val = x.mean()
-        if isinstance(val, float):
-            return val
-        else:
-            return float(val)
-
-    if len(adv_mean) > 0:
-        log_entry.mean_adv_mean = get_mean(adv_mean)
-    if len(adv_mean_magnitude) > 0:
-        log_entry.mean_adv_mean_magnitude = get_mean(adv_mean_magnitude)
-    if len(adv_var) > 0:
-        log_entry.mean_adv_var = get_mean(adv_var)
-    if len(adv_var_magnitude) > 0:
-        log_entry.mean_adv_var_magnitude = get_mean(adv_var_magnitude)
-
-    if im.has_epsilon:
-        log_entry.epsilon = model.spinn.epsilon
-    if im.has_spinn_temperature:
-        log_entry.temperature = model.spinn.temperature
-    if im.has_pyramid_temperature:
-        log_entry.temperature = model.temperature_to_display
-
-    log_entry.total_cost = total_cost
     return log_entry
 
 
-def eval_accumulate(model, A, batch):
-
-    X_batch, transitions_batch, y_batch, num_transitions_batch, train_ids = batch
-
-    im = inspect(model)
-
-    # Accumulate stats for transition accuracy.
-    if im.has_transition_loss:
-        preds = [
-            m["t_preds"] for m in model.spinn.memories if m.get(
-                't_preds', None) is not None]
-        truth = [
-            m["t_given"] for m in model.spinn.memories if m.get(
-                't_given', None) is not None]
-        A.add('preds', preds)
-        A.add('truth', truth)
-
-    if im.has_invalid:
-        A.add('invalid', model.spinn.invalid)
-
-
 def eval_stats(model, A, eval_data):
-    im = inspect(model)
+    candidate_correct = A.get('candidate_correct')
+    batch_candidates = A.get('candidate_batch')
+    eval_data.eval_candidate_accuracy = sum(candidate_correct) / float(sum(batch_candidates))
 
-    class_correct = A.get('class_correct')
-    class_total = A.get('class_total')
-    class_acc = sum(class_correct) / float(sum(class_total))
-    eval_data.eval_class_accuracy = class_acc
+    mention_correct = A.get('mention_correct')
+    batch_mentions = A.get('mention_batch')
+    eval_data.eval_mention_accuracy = sum(mention_correct) / float(sum(batch_mentions))
 
-    if im.has_transition_loss:
-        all_preds = np.array(flatten(A.get('preds')))
-        all_truth = np.array(flatten(A.get('truth')))
-        avg_trans_acc = (all_preds == all_truth).sum() / \
-            float(all_truth.shape[0])
-        eval_data.eval_transition_accuracy = avg_trans_acc
-
-    if im.has_invalid:
-        eval_data.invalid = A.get_avg('invalid')
+    doc_acc_per_batch = A.get('macro_acc')
+    batch_docs = A.get('doc_batch')
+    eval_data.eval_document_accuracy = sum(doc_acc_per_batch) / float(len(batch_docs))
 
     time_metric = time_per_token(A.get('total_tokens'), A.get('total_time'))
     eval_data.time_per_token_seconds = time_metric
@@ -181,14 +65,10 @@ def train_format(log_entry):
     stats_str = "Step: {step}"
 
     # Accuracy Component.
-    stats_str += " Acc: cl {class_acc:.5f} tr {transition_acc:.5f}"
+    stats_str += " Acc: cd {cand_acc:.5f} mt {ment_acc:.5f} dc {doc_acc:.5f}"
 
     # Cost Component.
-    stats_str += " Cost: to {total_loss:.5f} xe {xent_loss:.5f} tr {transition_loss:.5f}"
-    if log_entry.HasField('policy_cost'):
-        stats_str += " po {policy_cost:.5f}"
-    if log_entry.HasField('value_cost'):
-        stats_str += " va {value_cost:.5f}"
+    stats_str += " Cost: to {total_loss:.5f}"
 
     # Time Component.
     stats_str += " Time: {time:.5f}"
@@ -197,43 +77,18 @@ def train_format(log_entry):
 
 
 def eval_format(evaluation):
-    eval_str = "Step: {step} Eval acc: cl {class_acc:.5f} tr {transition_acc:.5f} {filename} Time: {time:.5f}"
+    eval_str = "Step: {step} Eval acc: cd {cand_acc:.5f} mt {ment_acc:.5f} dc {doc_acc:.5f} Time: {time:.5f}"
 
     return eval_str
-
-
-def sample_format(entry):
-    sample_str = "t_idx: {t_idx} \n \
-                    crossing: {crossing} \n \
-                    gold_lb: {gold_lb} \n \
-                    pred_tr: {pred_tr} \n \
-                    pred_ev: {pred_ev} \n \
-                    strg_tr: {strg_tr} \n \
-                    strg_ev: {strg_ev} "
-
-    return sample_str
-
 
 def log_formatter(log_entry):
     """Defines the log string to print to std error."""
     args = {
         'step': log_entry.step,
-        'class_acc': log_entry.class_accuracy,
-        'transition_acc': log_entry.transition_accuracy,
+        'cand_acc': log_entry.candidate_accuracy,
+        'ment_acc': log_entry.mention_accuracy,
+        'doc_acc': log_entry.document_accuracy,
         'total_loss': log_entry.total_cost,
-        'xent_loss': log_entry.cross_entropy_cost,
-        'transition_loss': log_entry.transition_cost,
-        'policy_cost': log_entry.policy_cost,
-        'value_cost': log_entry.value_cost,
-        'time': log_entry.time_per_token_seconds,
-        'learning_rate': log_entry.learning_rate,
-        'invalid': log_entry.invalid,
-        'mean_adv_mean': log_entry.mean_adv_mean,
-        'mean_adv_mean_magnitude': log_entry.mean_adv_mean_magnitude,
-        'mean_adv_var': log_entry.mean_adv_var,
-        'mean_adv_var_magnitude': log_entry.mean_adv_var_magnitude,
-        'epsilon': log_entry.epsilon,
-        'temperature': log_entry.temperature,
     }
 
     log_str = train_format(log_entry).format(**args)
@@ -241,26 +96,12 @@ def log_formatter(log_entry):
         for evaluation in log_entry.evaluation:
             eval_args = {
                 'step': log_entry.step,
-                'class_acc': evaluation.eval_class_accuracy,
-                'transition_acc': evaluation.eval_transition_accuracy,
-                'filename': evaluation.filename,
-                'time': evaluation.time_per_token_seconds,
-                'invalid': evaluation.invalid,
+        'cand_acc': log_entry.candidate_accuracy,
+        'ment_acc': log_entry.mention_accuracy,
+        'doc_acc': log_entry.document_accuracy,
             }
             log_str += '\n' + \
                 eval_format(evaluation).format(**eval_args)
-    if len(log_entry.rl_sampling) > 0:
-        for sample in log_entry.rl_sampling:
-            sample_args = {
-                't_idx': sample.t_idx,
-                'crossing': sample.crossing,
-                'gold_lb': sample.gold_lb,
-                'pred_tr': sample.pred_tr,
-                'pred_ev': sample.pred_ev,
-                'strg_tr': sample.strg_tr,
-                'strg_ev': sample.strg_ev,
-            }
-            log_str += "\n" + sample_format(sample).format(**sample_args)
 
     return log_str
 
@@ -270,15 +111,41 @@ def create_log_formatter():
         return log_formatter(log_entry)
     return fmt
 
+# --- Sample printing ---
 
-def prettyprint_tree(tree):
-    if isinstance(tree, tuple):
-        return '( ' + prettyprint_tree(tree[0]) + \
-            ' ' + prettyprint_tree(tree[1]) + ' )'
-    else:
-        return tree
+def print_samples(candidate_ids, output, vocabulary, docs, only_one=False):
+    # TODO: Don't show padding.
+    word_vocab, entity_vocab, id2wiki_vocab = vocabulary
 
+    ent_label_vocab = dict(
+            [(entity_vocab[id], id2wiki_vocab[id]) for id in entity_vocab if id in id2wiki_vocab])
+    ent_label_vocab[0] = 'NIL'
+    word_label_vocab = dict(
+        [(word_vocab[key], key) for key in word_vocab if key in word_vocab])
 
-def prettyprint_trees(trees):
-    strings = [prettyprint_tree(tree) for tree in trees]
-    return strings
+    sample_sequences = []
+    batch_size, max_candidates = candidate_ids.shape
+    for b in (list(range(batch_size)) if not only_one else [0]):
+        doc_token_sequence = []
+        doc = docs[b]
+        doc_cand_ids = candidate_ids[b]
+        c_idx = 0
+        start = 0
+        for mention in doc.mentions:
+            end = mention._mention_start
+            doc_token_sequence.extend([word_label_vocab[token]
+                                       for token in doc.tokens[start:end]])
+            pred_cid = 0
+            largest_prob = 0
+            for candidate in mention.candidates:
+                cid = doc_cand_ids[c_idx]
+                assert candidate.id == cid, "Error match candidates for printing sample!"
+                prob_cid = output[b*max_candidates+c_idx, 0]
+                if pred_cid > largest_prob : pred_cid = cid
+                c_idx += 1
+            doc_token_sequence.append("[[{}({})|{}|{}]]".format(ent_label_vocab[pred_cid], largest_prob,
+                       mention.gold_ent_str() if not mention._is_NIL else 'NIL', mention._mention_str))
+            start = end
+        doc_token_sequence.extend([word_label_vocab[token] for token in doc.tokens[start:]])
+        sample_sequences.append(' '.join(doc_token_sequence))
+    return sample_sequences

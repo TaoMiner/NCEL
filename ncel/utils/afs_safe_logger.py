@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import datetime
 import sys
 from . import logging_pb2 as pb
@@ -5,10 +6,11 @@ import re
 
 
 def default_formatter(log_entry):
-    fmt = 'step {}: class_acc{}, transition_acc{}, total_cost{}'.format(
+    fmt = 'step {}: cand_acc{}, ment_acc{}, doc_acc{}, total_cost{}'.format(
         log_entry.step,
-        log_entry.class_accuracy,
-        log_entry.transition_accuracy,
+        log_entry.candidate_accuracy,
+        log_entry.mention_accuracy,
+        log_entry.mention_accuracy,
         log_entry.total_cost)
     return fmt
 
@@ -56,7 +58,7 @@ class ProtoLogger(object):
     def LogHeader(self, header):
         if self.root is not None:
             raise Exception('Root object already logged!')
-        self.root = pb.SpinnLog()
+        self.root = pb.NcelLog()
         self.root.header.add().MergeFrom(header)
 
         # Store the header.

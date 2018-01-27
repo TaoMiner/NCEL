@@ -1,28 +1,245 @@
-
+# -*- coding: utf-8 -*-
 import os
 import json
-import random
 import sys
 import time
-import math
 
 import gflags
-import numpy as np
 
 from ncel.utils import afs_safe_logger
 from ncel.utils.data import SimpleProgressBar
-from ncel.utils.logging import stats, train_accumulate, create_log_formatter
-from ncel.utils.logging import eval_stats, eval_accumulate, prettyprint_trees
+from ncel.utils.logging import stats, create_log_formatter
+from ncel.utils.logging import eval_stats, print_samples
 import ncel.utils.logging_pb2 as pb
 from ncel.utils.trainer import ModelTrainer
 
 from ncel.models.base import get_data_manager, get_flags, get_batch
-from ncel.models.base import flag_defaults, init_model, log_path
+from ncel.models.base import init_model, log_path, flag_defaults
 from ncel.models.base import load_data_and_embeddings
+
+from ncel.utils.misc import Accumulator, EvalReporter, ComputeMentionAccuracy
+
+from ncel.utils.layers import to_gpu
+
+from ncel.utils.Candidates import getCandidateHandler
+
+# PyTorch
+import torch
+import torch.nn as nn
+from torch.autograd import Variable
 
 FLAGS = gflags.FLAGS
 
+NIL_THRED = 0.1
+
+def evaluate(FLAGS, model, eval_set, log_entry,
+             logger, vocabulary=None, show_sample=False, eval_index=0, report_sample=False):
+    dataset = eval_set
+
+    A = Accumulator()
+    eval_log = log_entry.evaluation.add()
+    reporter = EvalReporter()
+
+    # Evaluate
+    total_batches = len(dataset)
+    progress_bar = SimpleProgressBar(
+        msg="Run Eval",
+        bar_length=60,
+        enabled=FLAGS.show_progress_bar)
+    progress_bar.step(0, total=total_batches)
+    total_candidates = 0
+    start = time.time()
+    samples = None
+
+    model.eval()
+    max_candidates = dataset[1].shape[1]
+
+    for i, dataset_batch in enumerate(dataset):
+        batch = get_batch(dataset_batch)
+        eval_X_batch, eval_candidate_ids_batch, eval_y_batch, eval_num_candidates_batch, eval_doc_batch = batch
+        batch_candidates = eval_num_candidates_batch.sum()
+        # Run model.
+        output = model(
+            eval_X_batch,
+            eval_candidate_ids_batch,
+            eval_num_candidates_batch)
+
+        if show_sample:
+            samples = print_samples(
+                eval_candidate_ids_batch, output, vocabulary, eval_doc_batch, only_one=True)
+            show_sample=False
+
+        # Calculate candidate accuracy.
+        target = torch.from_numpy(eval_y_batch).long()
+
+        # get the index of the max log-probability
+        pred = output.max(1, keepdim=False)[1].cpu()
+        glod = target.max(1, keepdim=False)[1].cpu()
+        total_target = target.size(0)
+        candidate_correct = pred.eq(glod).sum() - total_target + batch_candidates
+
+        # Calculate mention accuracy.
+        batch_mentions, mention_correct, batch_docs, doc_acc_per_batch =\
+            ComputeMentionAccuracy(output.numpy(), eval_y_batch, max_candidates, eval_doc_batch, NIL_thred=0.1)
+
+        A.add('candidate_correct', candidate_correct)
+        A.add('candidate_batch', batch_candidates)
+        A.add('mention_correct', mention_correct)
+        A.add('mention_batch', batch_mentions)
+        A.add('macro_acc', doc_acc_per_batch)
+        A.add('doc_batch', batch_docs)
+
+        # Update Aggregate Accuracies
+        total_candidates += batch_candidates
+
+        if FLAGS.write_eval_report and report_sample:
+            batch_samples = print_samples(
+                eval_candidate_ids_batch, output, vocabulary, eval_doc_batch, only_one=False)
+            reporter.save_batch(batch_samples)
+
+        # Print Progress
+        progress_bar.step(i + 1, total=total_batches)
+    progress_bar.finish()
+    if samples is not None:
+        logger.Log('Sample: ' + samples[0])
+
+    end = time.time()
+    total_time = end - start
+
+    A.add('total_candidates', total_candidates)
+    A.add('total_time', total_time)
+
+    eval_stats(model, A, eval_log)
+
+    if FLAGS.write_eval_report and report_sample:
+        eval_report_path = os.path.join(
+            FLAGS.log_path,
+            FLAGS.experiment_name +
+            ".eval_set_" +
+            str(eval_index) +
+            ".report")
+        reporter.write_report(eval_report_path)
+
+    eval_mention_accuracy = eval_log.eval_mention_accuracy
+
+    return eval_mention_accuracy
+
+def train_loop(
+        FLAGS,
+        model,
+        trainer,
+        training_data_iter,
+        eval_iterators,
+        logger,
+        vocabulary):
+    # Accumulate useful statistics.
+    A = Accumulator(maxlen=FLAGS.deque_length)
+
+    # Train.
+    logger.Log("Training.")
+
+    max_candidates = FLAGS.max_candidates_per_document
+
+    # New Training Loop
+    progress_bar = SimpleProgressBar(
+        msg="Training",
+        bar_length=60,
+        enabled=FLAGS.show_progress_bar)
+    progress_bar.step(i=0, total=FLAGS.statistics_interval_steps)
+
+    log_entry = pb.NcelEntry()
+    for _ in range(trainer.step, FLAGS.training_steps):
+        if (trainer.step - trainer.best_dev_step) > FLAGS.early_stopping_steps_to_wait:
+            logger.Log('No improvement after ' +
+                       str(FLAGS.early_stopping_steps_to_wait) +
+                       ' steps. Stopping training.')
+            break
+
+        # set model in training mode
+        model.train()
+
+        log_entry.Clear()
+        log_entry.step = trainer.step
+        should_log = False
+
+        start = time.time()
+
+        batch = get_batch(next(training_data_iter))
+        x, candidate_ids, y, num_candidates, docs = batch
+
+        total_candidates = num_candidates.sum()
+
+        # Reset cached gradients.
+        trainer.optimizer_zero_grad()
+
+        # Run model. output: (batch_size * node_num) * 2
+        output = model(x, candidate_ids, num_candidates)
+
+        # Calculate class accuracy.
+        target = torch.from_numpy(y).long()
+
+        # get the index of the max log-probability
+        # y: (batch_size * node_num) * 2
+        pred = output.max(1, keepdim=False)[1].cpu()
+        glod = target.max(1, keepdim=False)[1].cpu()
+        total_target = target.size(0)
+        candidate_acc = (pred.eq(glod).sum()-total_target+total_candidates) / float(total_candidates)
+
+        # Calculate mention accuracy.
+        batch_mentions, mention_correct, batch_docs, doc_acc_per_batch = \
+            ComputeMentionAccuracy(output.numpy(), y, max_candidates, docs, NIL_thred=NIL_THRED)
+
+        # Calculate class loss.
+        xent_loss = nn.BCELoss()(output, to_gpu(Variable(target, volatile=False)))
+
+        # Backward pass.
+        xent_loss.backward()
+
+        # Hard Gradient Clipping
+        nn.utils.clip_grad_norm([param for name, param in model.named_parameters() if name not in ["embed.embed.weight"]], FLAGS.clipping_max_value)
+
+        # Gradient descent step.
+        trainer.optimizer_step()
+
+        end = time.time()
+
+        total_time = end - start
+
+        A.add('candidate_acc', candidate_acc)
+        A.add('mention_acc', mention_correct/float(batch_mentions))
+        A.add('doc_acc', doc_acc_per_batch)
+        A.add('total_candidates', total_candidates)
+        A.add('total_time', total_time)
+
+        if trainer.step % FLAGS.statistics_interval_steps == 0:
+            A.add('total_cost', xent_loss.data[0])
+            stats(model, trainer, A, log_entry)
+            should_log = True
+            progress_bar.finish()
+
+        if trainer.step > 0 and trainer.step % FLAGS.eval_interval_steps == 0:
+            should_log = True
+            for index, eval_set in enumerate(eval_iterators):
+                acc = evaluate(
+                    FLAGS, model, eval_set, log_entry, logger, show_sample=(
+                        trainer.step %
+                        FLAGS.sample_interval_steps == 0), vocabulary=vocabulary, eval_index=index)
+                if  index == 0:
+                    trainer.new_dev_accuracy(acc)
+            progress_bar.reset()
+
+        if trainer.step > FLAGS.ckpt_step and trainer.step % FLAGS.ckpt_interval_steps == 0:
+            should_log = True
+            trainer.checkpoint()
+
+        if should_log:
+            logger.LogEntry(log_entry)
+
+        progress_bar.step(i=(trainer.step % FLAGS.statistics_interval_steps) + 1,
+                          total=FLAGS.statistics_interval_steps)
+
 def run(only_forward=False):
+    # todo : revise create_log_formatter
     logger = afs_safe_logger.ProtoLogger(
         log_path(FLAGS), print_formatter=create_log_formatter(),
         write_proto=FLAGS.write_proto_to_log)
@@ -30,25 +247,19 @@ def run(only_forward=False):
 
     data_manager = get_data_manager(FLAGS.data_type)
 
-    logger.Log("Flag Values:\n" +
-               json.dumps(FLAGS.FlagValuesDict(), indent=4, sort_keys=True))
+    candidate_handler = getCandidateHandler()
+
+    logger.Log("Flag Values:\n" + json.dumps(FLAGS.FlagValuesDict(), indent=4, sort_keys=True))
 
     # Get Data and Embeddings
-    vocabulary, initial_embeddings, training_data_iter, eval_iterators, training_data_length = \
-        load_data_and_embeddings(FLAGS, data_manager, logger,
-                                 FLAGS.training_data_path, FLAGS.eval_data_path)
-    '''
-    f = open("./vocab.txt", "w")
-    for k in vocabulary:
-        f.write("{0}\t{1}\n".format(k, vocabulary[k]))
-    f.close()
-    '''
-    # Build model.
-    vocab_size = len(vocabulary)
-    num_classes = len(set(data_manager.LABEL_MAP.values()))
+    vocabulary, initial_embeddings, training_data_iter, eval_iterators,\
+        training_data_length, feature_dim = load_data_and_embeddings(FLAGS, data_manager, logger, candidate_handler)
 
-    model = init_model(
-        FLAGS, logger, initial_embeddings, vocab_size, num_classes, data_manager, header)
+    word_embeddings, entity_embeddings, sense_embeddings, mu_embeddings = initial_embeddings
+
+    # Build model.
+
+    model = init_model(FLAGS, entity_embeddings, feature_dim, logger, header)
     epoch_length = int(training_data_length / FLAGS.batch_size)
     trainer = ModelTrainer(model, logger, epoch_length, vocabulary, FLAGS)
 
@@ -57,9 +268,11 @@ def run(only_forward=False):
 
     # Do an evaluation-only run.
     logger.LogHeader(header)  # Start log_entry logging.
+    total_loops = FLAGS.cross_validation + 2 if FLAGS.cross_validation > 0 else 1
+
     if only_forward:
-        log_entry = pb.SpinnEntry()
-        for index, eval_set in enumerate(eval_iterators):
+        log_entry = pb.NcelEntry()
+        for index, eval_set in enumerate(eval_iterators[0]):
             log_entry.Clear()
             evaluate(
                 FLAGS,
@@ -68,28 +281,27 @@ def run(only_forward=False):
                 log_entry,
                 logger,
                 trainer,
-                vocabulary,
                 show_sample=True,
-                eval_index=index)
+                eval_index=index,
+                report_sample=True)
             print(log_entry)
             logger.LogEntry(log_entry)
     else:
-        train_loop(
-            FLAGS,
-            model,
-            trainer,
-            training_data_iter,
-            eval_iterators,
-            logger,
-            vocabulary)
-
+        for cur_loop in range(total_loops):
+            train_loop(
+                FLAGS,
+                model,
+                trainer,
+                training_data_iter[cur_loop],
+                eval_iterators[cur_loop],
+                logger,
+                vocabulary)
 
 if __name__ == '__main__':
     get_flags()
 
     # Parse command line flags.
     FLAGS(sys.argv)
-
     flag_defaults(FLAGS)
 
-    run(only_forward=FLAGS.expanded_eval_only_mode)
+    run(only_forward=FLAGS.eval_only_mode)

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 try:
     import xml.etree.cElementTree as ET
 except ImportError:

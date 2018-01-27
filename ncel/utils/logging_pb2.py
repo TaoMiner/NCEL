@@ -19,9 +19,8 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='ncel/utils/logging.proto',
   package='logging',
   syntax='proto2',
-  serialized_pb=_b('\n\x18ncel/utils/logging.proto\x12\x07logging\"S\n\x07NcelLog\x12#\n\x06header\x18\x01 \x03(\x0b\x32\x13.logging.NcelHeader\x12#\n\x07\x65ntries\x18\x02 \x03(\x0b\x32\x12.logging.NcelEntry\"\x8a\x02\n\nNcelHeader\x12\x14\n\x0ctotal_params\x18\x01 \x01(\x05\x12\x1a\n\x12model_architecture\x18\x02 \x01(\t\x12\x16\n\x0e\x65val_filenames\x18\x03 \x03(\t\x12\x12\n\nstart_step\x18\x04 \x01(\x05\x12\x12\n\nstart_time\x18\x05 \x01(\x03\x12\x13\n\x0bmodel_label\x18\x06 \x03(\t\x12\x32\n\x05\x66lags\x18\x64 \x03(\x0b\x32#.logging.NcelHeader.CommandLineFlag\x12\x12\n\nextra_logs\x18\x65 \x03(\t\x1a-\n\x0f\x43ommandLineFlag\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"\xd4\x02\n\tNcelEntry\x12\x0c\n\x04step\x18\x01 \x01(\x05\x12\x16\n\x0e\x63lass_accuracy\x18\x02 \x01(\x02\x12\x1b\n\x13transition_accuracy\x18\x03 \x01(\x02\x12\x12\n\ntotal_cost\x18\x04 \x01(\x02\x12\x1a\n\x12\x63ross_entropy_cost\x18\x05 \x01(\x02\x12\x17\n\x0ftransition_cost\x18\x06 \x01(\x02\x12\x0f\n\x07l2_cost\x18\x07 \x01(\x02\x12\x1e\n\x16time_per_token_seconds\x18\x08 \x01(\x02\x12\x15\n\rlearning_rate\x18\t \x01(\x02\x12\x0f\n\x07invalid\x18\n \x01(\x02\x12\x13\n\x0bmodel_label\x18\x16 \x01(\t\x12\x12\n\nroot_label\x18\x17 \x01(\t\x12%\n\nevaluation\x18\x13 \x03(\x0b\x32\x11.logging.EvalData\x12\x12\n\ncheckpoint\x18\x14 \x01(\t\"\xa1\x01\n\x08\x45valData\x12\x1b\n\x13\x65val_class_accuracy\x18\x02 \x01(\x02\x12 \n\x18\x65val_transition_accuracy\x18\x03 \x01(\x02\x12\x10\n\x08\x66ilename\x18\x04 \x01(\t\x12\x1e\n\x16time_per_token_seconds\x18\x05 \x01(\x02\x12\x13\n\x0breport_path\x18\x06 \x01(\t\x12\x0f\n\x07invalid\x18\x07 \x01(\x02')
+  serialized_pb=_b('\n\x18ncel/utils/logging.proto\x12\x07logging\"S\n\x07NcelLog\x12#\n\x06header\x18\x01 \x03(\x0b\x32\x13.logging.NcelHeader\x12#\n\x07\x65ntries\x18\x02 \x03(\x0b\x32\x12.logging.NcelEntry\"\x8a\x02\n\nNcelHeader\x12\x14\n\x0ctotal_params\x18\x01 \x01(\x05\x12\x1a\n\x12model_architecture\x18\x02 \x01(\t\x12\x16\n\x0e\x65val_filenames\x18\x03 \x03(\t\x12\x12\n\nstart_step\x18\x04 \x01(\x05\x12\x12\n\nstart_time\x18\x05 \x01(\x03\x12\x13\n\x0bmodel_label\x18\x06 \x03(\t\x12\x32\n\x05\x66lags\x18\x64 \x03(\x0b\x32#.logging.NcelHeader.CommandLineFlag\x12\x12\n\nextra_logs\x18\x65 \x03(\t\x1a-\n\x0f\x43ommandLineFlag\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"\x96\x02\n\tNcelEntry\x12\x0c\n\x04step\x18\x01 \x01(\x05\x12\x1a\n\x12\x63\x61ndidate_accuracy\x18\x02 \x01(\x02\x12\x18\n\x10mention_accuracy\x18\x03 \x01(\x02\x12\x19\n\x11\x64ocument_accuracy\x18\x04 \x01(\x02\x12\x12\n\ntotal_cost\x18\x05 \x01(\x02\x12\x0f\n\x07l2_cost\x18\x06 \x01(\x02\x12\x1e\n\x16time_per_token_seconds\x18\x07 \x01(\x02\x12\x15\n\rlearning_rate\x18\x08 \x01(\x02\x12\x13\n\x0bmodel_label\x18\t \x01(\t\x12%\n\nevaluation\x18\n \x03(\x0b\x32\x11.logging.EvalData\x12\x12\n\ncheckpoint\x18\x0b \x01(\t\"\xb1\x01\n\x08\x45valData\x12\x1f\n\x17\x65val_candidate_accuracy\x18\x01 \x01(\x02\x12\x1d\n\x15\x65val_mention_accuracy\x18\x02 \x01(\x02\x12\x1e\n\x16\x65val_document_accuracy\x18\x03 \x01(\x02\x12\x10\n\x08\x66ilename\x18\x04 \x01(\t\x12\x1e\n\x16time_per_token_seconds\x18\x05 \x01(\x02\x12\x13\n\x0breport_path\x18\x06 \x01(\t')
 )
-_sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 
 
@@ -39,14 +38,14 @@ _NCELLOG = _descriptor.Descriptor(
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='entries', full_name='logging.NcelLog.entries', index=1,
       number=2, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -77,14 +76,14 @@ _NCELHEADER_COMMANDLINEFLAG = _descriptor.Descriptor(
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='value', full_name='logging.NcelHeader.CommandLineFlag.value', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -114,56 +113,56 @@ _NCELHEADER = _descriptor.Descriptor(
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='model_architecture', full_name='logging.NcelHeader.model_architecture', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='eval_filenames', full_name='logging.NcelHeader.eval_filenames', index=2,
       number=3, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='start_step', full_name='logging.NcelHeader.start_step', index=3,
       number=4, type=5, cpp_type=1, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='start_time', full_name='logging.NcelHeader.start_time', index=4,
       number=5, type=3, cpp_type=2, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='model_label', full_name='logging.NcelHeader.model_label', index=5,
       number=6, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='flags', full_name='logging.NcelHeader.flags', index=6,
       number=100, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='extra_logs', full_name='logging.NcelHeader.extra_logs', index=7,
       number=101, type=9, cpp_type=9, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -194,98 +193,77 @@ _NCELENTRY = _descriptor.Descriptor(
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='class_accuracy', full_name='logging.NcelEntry.class_accuracy', index=1,
+      name='candidate_accuracy', full_name='logging.NcelEntry.candidate_accuracy', index=1,
       number=2, type=2, cpp_type=6, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='transition_accuracy', full_name='logging.NcelEntry.transition_accuracy', index=2,
+      name='mention_accuracy', full_name='logging.NcelEntry.mention_accuracy', index=2,
       number=3, type=2, cpp_type=6, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='total_cost', full_name='logging.NcelEntry.total_cost', index=3,
+      name='document_accuracy', full_name='logging.NcelEntry.document_accuracy', index=3,
       number=4, type=2, cpp_type=6, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='cross_entropy_cost', full_name='logging.NcelEntry.cross_entropy_cost', index=4,
+      name='total_cost', full_name='logging.NcelEntry.total_cost', index=4,
       number=5, type=2, cpp_type=6, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='transition_cost', full_name='logging.NcelEntry.transition_cost', index=5,
+      name='l2_cost', full_name='logging.NcelEntry.l2_cost', index=5,
       number=6, type=2, cpp_type=6, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='l2_cost', full_name='logging.NcelEntry.l2_cost', index=6,
+      name='time_per_token_seconds', full_name='logging.NcelEntry.time_per_token_seconds', index=6,
       number=7, type=2, cpp_type=6, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='time_per_token_seconds', full_name='logging.NcelEntry.time_per_token_seconds', index=7,
+      name='learning_rate', full_name='logging.NcelEntry.learning_rate', index=7,
       number=8, type=2, cpp_type=6, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='learning_rate', full_name='logging.NcelEntry.learning_rate', index=8,
-      number=9, type=2, cpp_type=6, label=1,
-      has_default_value=False, default_value=float(0),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None),
-    _descriptor.FieldDescriptor(
-      name='invalid', full_name='logging.NcelEntry.invalid', index=9,
-      number=10, type=2, cpp_type=6, label=1,
-      has_default_value=False, default_value=float(0),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None),
-    _descriptor.FieldDescriptor(
-      name='model_label', full_name='logging.NcelEntry.model_label', index=10,
-      number=22, type=9, cpp_type=9, label=1,
+      name='model_label', full_name='logging.NcelEntry.model_label', index=8,
+      number=9, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='root_label', full_name='logging.NcelEntry.root_label', index=11,
-      number=23, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None),
-    _descriptor.FieldDescriptor(
-      name='evaluation', full_name='logging.NcelEntry.evaluation', index=12,
-      number=19, type=11, cpp_type=10, label=3,
+      name='evaluation', full_name='logging.NcelEntry.evaluation', index=9,
+      number=10, type=11, cpp_type=10, label=3,
       has_default_value=False, default_value=[],
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='checkpoint', full_name='logging.NcelEntry.checkpoint', index=13,
-      number=20, type=9, cpp_type=9, label=1,
+      name='checkpoint', full_name='logging.NcelEntry.checkpoint', index=10,
+      number=11, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -299,7 +277,7 @@ _NCELENTRY = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=392,
-  serialized_end=732,
+  serialized_end=670,
 )
 
 
@@ -311,47 +289,47 @@ _EVALDATA = _descriptor.Descriptor(
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='eval_class_accuracy', full_name='logging.EvalData.eval_class_accuracy', index=0,
+      name='eval_candidate_accuracy', full_name='logging.EvalData.eval_candidate_accuracy', index=0,
+      number=1, type=2, cpp_type=6, label=1,
+      has_default_value=False, default_value=float(0),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='eval_mention_accuracy', full_name='logging.EvalData.eval_mention_accuracy', index=1,
       number=2, type=2, cpp_type=6, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='eval_transition_accuracy', full_name='logging.EvalData.eval_transition_accuracy', index=1,
+      name='eval_document_accuracy', full_name='logging.EvalData.eval_document_accuracy', index=2,
       number=3, type=2, cpp_type=6, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='filename', full_name='logging.EvalData.filename', index=2,
+      name='filename', full_name='logging.EvalData.filename', index=3,
       number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='time_per_token_seconds', full_name='logging.EvalData.time_per_token_seconds', index=3,
+      name='time_per_token_seconds', full_name='logging.EvalData.time_per_token_seconds', index=4,
       number=5, type=2, cpp_type=6, label=1,
       has_default_value=False, default_value=float(0),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='report_path', full_name='logging.EvalData.report_path', index=4,
+      name='report_path', full_name='logging.EvalData.report_path', index=5,
       number=6, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
-      options=None),
-    _descriptor.FieldDescriptor(
-      name='invalid', full_name='logging.EvalData.invalid', index=5,
-      number=7, type=2, cpp_type=6, label=1,
-      has_default_value=False, default_value=float(0),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None),
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -364,8 +342,8 @@ _EVALDATA = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=735,
-  serialized_end=896,
+  serialized_start=673,
+  serialized_end=850,
 )
 
 _NCELLOG.fields_by_name['header'].message_type = _NCELHEADER
@@ -377,6 +355,7 @@ DESCRIPTOR.message_types_by_name['NcelLog'] = _NCELLOG
 DESCRIPTOR.message_types_by_name['NcelHeader'] = _NCELHEADER
 DESCRIPTOR.message_types_by_name['NcelEntry'] = _NCELENTRY
 DESCRIPTOR.message_types_by_name['EvalData'] = _EVALDATA
+_sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 NcelLog = _reflection.GeneratedProtocolMessageType('NcelLog', (_message.Message,), dict(
   DESCRIPTOR = _NCELLOG,

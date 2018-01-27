@@ -28,28 +28,25 @@ message NcelHeader {
 
 message NcelEntry {
   optional int32 step = 1;
-  optional float class_accuracy = 2;
-  optional float transition_accuracy = 3;
-  optional float total_cost = 4;
-  optional float cross_entropy_cost = 5;
-  optional float transition_cost = 6;
-  optional float l2_cost = 7;
-  optional float time_per_token_seconds = 8;
-  optional float learning_rate = 9;
-  optional float invalid = 10;
-  optional string model_label = 22; // If multiple logs print to the same file.
-  optional string root_label = 23;
+  optional float candidate_accuracy = 2;
+  optional float mention_accuracy = 3;
+  optional float document_accuracy = 4;
+  optional float total_cost = 5;
+  optional float l2_cost = 6;   // to do
+  optional float time_per_token_seconds = 7;
+  optional float learning_rate = 8;
+  optional string model_label = 9; // If multiple logs print to the same file.
 
-  repeated EvalData evaluation = 19;
+  repeated EvalData evaluation = 10;
 
-  optional string checkpoint = 20;
+  optional string checkpoint = 11;
 }
 
 message EvalData {
-  optional float eval_class_accuracy = 2;
-  optional float eval_transition_accuracy = 3;
+  optional float eval_candidate_accuracy = 1;
+  optional float eval_mention_accuracy = 2;
+  optional float eval_document_accuracy = 3;
   optional string filename = 4;
   optional float time_per_token_seconds = 5;
   optional string report_path = 6;
-  optional float invalid = 7;
 }

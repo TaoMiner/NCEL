@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from ncel.data.KBPDataReader import *
 from ncel.utils.xmlProcessor import buildXml
 
@@ -30,9 +31,9 @@ class kbp15Formatter():
         for doc in corpus:
             out_fname = os.path.join(out_path, doc.doc_id + '.txt')
             for m in doc.mentions:
-                offset = len(' '.join(doc.text[:m[0]])) + 1
-                length = len(' '.join(doc.text[m[0]:m[0] + m[1]]))
-                assert length == len(m[3]), "wrong mention"
+                offset = len(' '.join(doc.text[:m[0]]))
+                # add an extra white space unless it is the first word
+                if m[0] > 0: offset += 1
                 new_all_mentions[doc.doc_id] = new_all_mentions.get(doc.doc_id, [])
                 new_all_mentions[doc.doc_id].append([m[3], m[2], offset])
             with codecs.open(out_fname, 'w', encoding='utf-8') as fout:

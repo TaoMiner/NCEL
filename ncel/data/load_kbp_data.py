@@ -1,7 +1,9 @@
+# -*- coding: utf-8 -*-
 from ncel.utils.document import *
 from ncel.utils.xmlProcessor import *
 import os
 import re
+from ncel.utils.data import loadWikiVocab
 
 def _KbpFileToDocIterator(fpath):
     files = os.listdir(fpath)
@@ -29,13 +31,15 @@ zh_ssplit_punc = "！？｡。"
 punction = '[{0}{1}]'.format(en_punctuation, zh_punctuation)
 ssplict_puncRE = re.compile('[{0}{1}]'.format(en_sent_split_punc, zh_ssplit_punc))
 class KbpDataLoader(xmlHandler):
-    def __init__(self, rawtext_path, mention_fname, kbp_id2wikiid_file, include_unresolved=False, lowercase=False):
+    def __init__(self, rawtext_path, mention_fname, kbp_id2wikiid_file,
+                 include_unresolved=False, lowercase=False, wiki_id2label=None):
         super(KbpDataLoader, self).__init__(['mention', 'wikiId'], ['offset', 'length'])
         self._fpath = rawtext_path
         self._m_fname = mention_fname
         self._include_unresolved = include_unresolved
         self.lowercase = lowercase
         self._id2wikiid_file = kbp_id2wikiid_file
+        self._wiki_id2label = wiki_id2label
 
     def _processLineSlice(self, line_slice, doc, sent):
         # split words in line slice
@@ -51,20 +55,20 @@ class KbpDataLoader(xmlHandler):
                 doc.tokens.append(rt)
             elif dot_idx == 0:
                 doc.tokens.append(rt[dot_idx+1:])
-                doc.sentences.append(' '.join(sent))
-                del sent[:]
+                doc.sentences.append(sent)
+                sent = []
                 sent.append(rt[dot_idx+1:])
             elif dot_idx == len(rt)-1:
                 doc.tokens.append(rt[:dot_idx])
                 sent.append(rt[:dot_idx])
-                doc.sentences.append(' '.join(sent))
-                del sent[:]
+                doc.sentences.append(sent)
+                sent = []
             else:
                 doc.tokens.append(rt[:dot_idx])
                 doc.tokens.append(rt[dot_idx+1:])
                 sent.append(rt[:dot_idx])
-                doc.sentences.append(' '.join(sent))
-                del sent[:]
+                doc.sentences.append(sent)
+                sent = []
                 sent.append(rt[dot_idx + 1:])
 
     def documents(self):
@@ -75,7 +79,7 @@ class KbpDataLoader(xmlHandler):
         for (doc_name, mentions) in self.process(self._m_fname):
             postfix_inf = doc_name.rfind(r'.')
             doc_name = doc_name if postfix_inf == -1 else doc_name[:postfix_inf]
-            all_mentions[doc_name] = mentions.copy()
+            all_mentions[doc_name] = list(mentions)
         i=0
         for (doc_name, doc_lines) in _KbpFileToDocIterator(self._fpath):
             if doc_name not in all_mentions : continue
@@ -95,6 +99,10 @@ class KbpDataLoader(xmlHandler):
                 else:
                     continue
 
+                if kbp_ent_id != 'NIL' and not isinstance(self._wiki_id2label, type(None)) and \
+                                kbp_ent_id not in self._wiki_id2label : continue
+                wiki_label = self._wiki_id2label.get(kbp_ent_id, 'NIL')
+
                 doc_start_inx = doc_mention['offset']
                 doc_end_inx = doc_mention['offset'] + doc_mention['length']
                 split_inx.add(doc_start_inx)
@@ -103,8 +111,8 @@ class KbpDataLoader(xmlHandler):
                 start_inx[doc_start_inx].append(j)
                 end_inx[doc_end_inx] = end_inx.get(doc_end_inx, [])
                 end_inx[doc_end_inx].append(j)
-                # [_, _, new_start_offset, new_tokens_num]
-                tmp_mentions[j] = [doc_mention['mention'], kbp_ent_id, -1, -1]
+                # [_, _, _, new_start_offset, new_tokens_num]
+                tmp_mentions[j] = [doc_mention['mention'], wiki_label, kbp_ent_id, -1, -1]
 
             # sort the slice inx
             split_inx = sorted(split_inx)
@@ -128,16 +136,19 @@ class KbpDataLoader(xmlHandler):
                     # update mention start index
                     if line_offset+base_offset in start_inx:
                         for j in start_inx[line_offset+base_offset]:
-                            tmp_mentions[j][2] = len(doc.tokens)
+                            tmp_mentions[j][3] = len(doc.tokens)
                     self._processLineSlice(line_slice, doc, sent)
                     # update mention end index
                     if p + base_offset in end_inx:
                         for j in end_inx[p + base_offset]:
-                            tmp_mentions[j][3] = len(doc.tokens)
-                            if tmp_mentions[j][2] != -1:
-                                m = Mention(doc, tmp_mentions[j][2], tmp_mentions[j][3])
-                                if tmp_mentions[j][1] != "NIL": m._gold_ent_str = tmp_mentions[j][1]
-                                doc.mentions.append(m)
+                            tmp_mentions[j][4] = len(doc.tokens)
+                            if tmp_mentions[j][3] == -1: continue
+                            if tmp_mentions[j][2] == 'NIL':
+                                m = Mention(doc, tmp_mentions[j][3], tmp_mentions[j][4], is_NIL=True)
+                            else:
+                                m = Mention(doc, tmp_mentions[j][3], tmp_mentions[j][4],
+                                        gold_ent_id=tmp_mentions[j][2], gold_ent_str=tmp_mentions[j][1])
+                            doc.mentions.append(m)
 
                     if p >= line_len : break
                     line_offset = p
@@ -146,21 +157,25 @@ class KbpDataLoader(xmlHandler):
                     self._processLineSlice(line[line_offset:], doc, sent)
                 base_offset += line_len
                 if len(sent) > 0:
-                    doc.sentences.append(' '.join(sent))
-                del sent[:]
-            yield (doc_name, doc)
+                    doc.sentences.append(sent)
+                sent = []
+            yield doc
 
     def mentions(self):
         for (doc_name, doc) in self.documents():
             for mention in doc.mentions:
                 yield mention
 
-def load_data(text_path=None, mention_file=None, kbp_id2wikiid_file=None, genre=0, include_unresolved=False, lowercase=False):
-    assert not isinstance(type(text_path), None) and not isinstance(type(text_path), None) \
-        and not isinstance(type(kbp_id2wikiid_file), None), "kbp data requires raw text path, mention file and id2wiki file!"
+def load_data(text_path=None, mention_file=None, kbp_id2wikiid_file=None, genre=0,
+              include_unresolved=False, lowercase=False, wiki_entity_file=None):
+    assert not isinstance(text_path, type(None)) and not isinstance(text_path, type(None)) \
+        and not isinstance(kbp_id2wikiid_file, type(None)), "kbp data requires raw text path, mention file and id2wiki file!"
     print("Loading", text_path)
+    wiki_label2id, wiki_id2label = loadWikiVocab(wiki_entity_file)
     docs = []
-    doc_iter = KbpDataLoader(text_path, mention_file, kbp_id2wikiid_file, include_unresolved=include_unresolved, lowercase=lowercase)
+    doc_iter = KbpDataLoader(text_path, mention_file, kbp_id2wikiid_file,
+                             include_unresolved=include_unresolved, lowercase=lowercase,
+                             wiki_id2label=wiki_id2label)
     for doc in doc_iter.documents():
         docs.append(doc)
     return docs
@@ -170,6 +185,7 @@ if __name__ == "__main__":
     docs = load_data(text_path='/home/caoyx/data/kbp/kbp_cl/kbp16/eng/eval/nw',
                      mention_file='/home/caoyx/data/kbp/kbp_cl/kbp16/eng/eval/kbp16_nw_gold.xml',
                      kbp_id2wikiid_file='/home/caoyx/data/kbp/kbp_cl/id.key2015')
-    print(docs[0].doc_name)
-    print(docs[0].mentions)
+    print(docs[0].name)
+    for m in docs[0].mentions:
+        print("{0}, {1}, {2}".format(m._mention_start, m._mention_end, m._gold_ent_id))
     print(docs[0].tokens)

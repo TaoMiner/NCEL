@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from ncel.utils.document import *
 
 DOC_GENRE = ('testa', 'testb', 'train')
@@ -13,16 +14,15 @@ def _CoNLLFileToDocIterator(fname, split='testa'):
     for line in lines:
         line = line.strip()
         if line.startswith('-DOCSTART-'):
-            if curdocName is not None and \
-                    (split == 'all' or curdocSplit == split):
-                yield (curdoc, curdocName, curdocSplit)
+            if curdocName is not None and curdocSplit == split:
+                yield (curdoc, curdocName)
             sp = line.split(' ')
             curdocName = sp[2][:-1]
             curdocSplit = DOC_GENRE[0] if sp[1].endswith(DOC_GENRE[0]) else (DOC_GENRE[1] if sp[1].endswith(DOC_GENRE[1]) else DOC_GENRE[2])
             curdoc = []
         else:
             curdoc.append(line)
-    if curdocName is not None and (split == 'all' or curdocSplit == split):
+    if curdocName is not None and curdocSplit == split:
         yield (curdoc, curdocName)
 
 
@@ -68,7 +68,7 @@ class CoNLLIterator:
                     line = line.lower()
                 if len(line) == 0:
                     # sentence boundary.
-                    doc.sentences.append(' '.join(sent))
+                    doc.sentences.append(sent)
                     sent = []
                     continue
                 t = line.split('\t')
@@ -90,7 +90,7 @@ class CoNLLIterator:
                         mention = Mention(doc, len(doc.tokens) - 1, len(doc.tokens),
                                           gold_ent_id=gold_ent_id, gold_ent_str=gold_ent_str)
                     else:
-                        mention = Mention(doc, len(doc.tokens) - 1, len(doc.tokens))
+                        mention = Mention(doc, len(doc.tokens) - 1, len(doc.tokens), is_NIL=True)
                     doc.mentions.append(mention)
 
             yield doc
@@ -100,8 +100,9 @@ class CoNLLIterator:
             for mention in doc.mentions:
                 yield mention
 
-def load_data(text_path=None, mention_file=None, kbp_id2wikiid_file=None, genre=0, include_unresolved=False, lowercase=False):
-    assert not isinstance(type(mention_file), None), "conll data requires mention file!"
+def load_data(text_path=None, mention_file=None, kbp_id2wikiid_file=None, genre=0,
+              include_unresolved=False, lowercase=False, wiki_entity_file=None):
+    assert not isinstance(mention_file, type(None)), "conll data requires mention file!"
     print("Loading", mention_file)
     docs = []
     doc_iter = CoNLLIterator(mention_file, genre=genre, include_unresolved = include_unresolved, lowercase=lowercase)
@@ -112,6 +113,7 @@ def load_data(text_path=None, mention_file=None, kbp_id2wikiid_file=None, genre=
 if __name__ == "__main__":
     # Demo:
     docs = load_data(mention_file='/home/caoyx/data/conll/AIDA-YAGO2-dataset.tsv')
-    print(docs[0].doc_name)
-    print(docs[0].mentions)
+    print(docs[0].name)
+    for m in docs[0].mentions:
+        print("{0}, {1}, {2}".format(m._mention_start, m._mention_end, m._gold_ent_id))
     print(docs[0].tokens)

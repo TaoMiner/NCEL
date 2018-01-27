@@ -1,6 +1,8 @@
+# -*- coding: utf-8 -*-
 import os
 from ncel.utils.document import *
 import re
+from ncel.utils.data import loadWikiVocab
 
 def _xlwikiFileToDocIterator(fpath):
     files = os.listdir(fpath)
@@ -27,10 +29,11 @@ ssplict_puncRE = re.compile('[{0}{1}]'.format(en_sent_split_punc, zh_ssplit_punc
 
 class XlwikiDataLoader():
     # genre indicates how difficult the mention is, 0 : easy, 1 : hard, 2 : all
-    def __init__(self, path, genre=2, lowercase=False):
+    def __init__(self, path, genre=2, lowercase=False, wiki_label2id=None):
         self._fpath = path
         self.lowercase = lowercase
         self.is_hard = genre
+        self._wiki_label2id = wiki_label2id
 
     def _processLineSlice(self, line_slice, doc, sent):
         # split words in line slice
@@ -46,20 +49,20 @@ class XlwikiDataLoader():
                 doc.tokens.append(rt)
             elif dot_idx == 0:
                 doc.tokens.append(rt[dot_idx+1:])
-                doc.sentences.append(' '.join(sent))
-                del sent[:]
+                doc.sentences.append(sent)
+                sent = []
                 sent.append(rt[dot_idx+1:])
             elif dot_idx == len(rt)-1:
                 doc.tokens.append(rt[:dot_idx])
                 sent.append(rt[:dot_idx])
-                doc.sentences.append(' '.join(sent))
-                del sent[:]
+                doc.sentences.append(sent)
+                sent = []
             else:
                 doc.tokens.append(rt[:dot_idx])
                 doc.tokens.append(rt[dot_idx+1:])
                 sent.append(rt[:dot_idx])
-                doc.sentences.append(' '.join(sent))
-                del sent[:]
+                doc.sentences.append(sent)
+                sent = []
                 sent.append(rt[dot_idx + 1:])
 
     def documents(self):
@@ -84,7 +87,13 @@ class XlwikiDataLoader():
                 end_inx[doc_end_inx] = end_inx.get(doc_end_inx, [])
                 end_inx[doc_end_inx].append(j)
                 # [en_wiki_name, foreign_wiki_name, new_start_offset, new_tokens_num]
-                tmp_mentions[j] = [items[2], items[3], -1, -1]
+                en_wiki_name = re.sub(r'_', ' ', items[2])
+                foreign_wiki_name = re.sub(r'_', ' ', items[3])
+                if not isinstance(self._wiki_label2id, type(None)) and \
+                                en_wiki_name not in self._wiki_label2id : continue
+                en_wiki_id = self._wiki_label2id[en_wiki_name]
+
+                tmp_mentions[j] = [en_wiki_name, en_wiki_id, foreign_wiki_name, -1, -1]
             # skip those don't have any mention
             if len(tmp_mentions) < 1 : continue
             # sort the slice inx
@@ -108,15 +117,16 @@ class XlwikiDataLoader():
                     # update mention start index
                     if line_offset + base_offset in start_inx:
                         for j in start_inx[line_offset + base_offset]:
-                            tmp_mentions[j][2] = len(doc.tokens)
+                            tmp_mentions[j][3] = len(doc.tokens)
                     self._processLineSlice(line_slice, doc, sent)
                     # update mention end index
                     if p + base_offset in end_inx:
                         for j in end_inx[p + base_offset]:
-                            tmp_mentions[j][3] = len(doc.tokens)
-                            if tmp_mentions[j][2] != -1:
-                                m = Mention(doc, tmp_mentions[j][2], tmp_mentions[j][3], gold_ent_str=tmp_mentions[j][0])
-                                m._gold_foreign_str = tmp_mentions[j][1]
+                            tmp_mentions[j][4] = len(doc.tokens)
+                            if tmp_mentions[j][3] != -1:
+                                m = Mention(doc, tmp_mentions[j][3], tmp_mentions[j][4],
+                                            gold_ent_id=tmp_mentions[j][1], gold_ent_str=tmp_mentions[j][0])
+                                m._gold_foreign_str = tmp_mentions[j][2]
                                 doc.mentions.append(m)
 
                     if p >= line_len: break
@@ -126,22 +136,26 @@ class XlwikiDataLoader():
                     self._processLineSlice(line[line_offset:], doc, sent)
                 base_offset += line_len
                 if len(sent) > 0:
-                    doc.sentences.append(' '.join(sent))
-                del sent[:]
-            yield (doc_name, doc)
+                    doc.sentences.append(sent)
+                sent = []
+            yield doc
 
-def load_data(text_path=None, mention_file=None, kbp_id2wikiid_file=None, genre=0, include_unresolved=False, lowercase=False):
-    assert not isinstance(type(text_path), None), "xlwiki data requires raw path!"
+def load_data(text_path=None, mention_file=None, kbp_id2wikiid_file=None, genre=0,
+              include_unresolved=False, lowercase=False, wiki_entity_file=None):
+    assert not isinstance(text_path, type(None)), "xlwiki data requires raw path!"
     print("Loading", text_path)
+    wiki_label2id, wiki_id2label = loadWikiVocab(wiki_entity_file)
     docs = []
-    doc_iter = XlwikiDataLoader(text_path, genre=genre, lowercase=lowercase)
+    doc_iter = XlwikiDataLoader(text_path, genre=genre,
+                                lowercase=lowercase, wiki_label2id=wiki_label2id)
     for doc in doc_iter.documents():
         docs.append(doc)
     return docs
 
 if __name__ == "__main__":
     # Demo:
-    docs = load_data(text_path='/Users/ethan/Downloads/xlwikifier-wikidata/data/it/train/')
-    print(docs[0].doc_name)
-    print(docs[0].mentions)
+    docs = load_data(text_path='/home/caoyx/data/xlwikifier-wikidata/data/it/train/')
+    print(docs[0].name)
+    for m in docs[0].mentions:
+        print("{0}, {1}, {2}, {3}".format(m._mention_start, m._mention_end, m._gold_ent_str, m._gold_foreign_str))
     print(docs[0].tokens)

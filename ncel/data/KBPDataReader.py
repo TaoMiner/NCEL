@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import codecs
 import regex as re
 import string
