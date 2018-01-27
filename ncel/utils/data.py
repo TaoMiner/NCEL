@@ -475,11 +475,11 @@ def MakeTrainingIterator(
         batches = []
 
         for split in order_splits:
-            # Put indices into buckets based on mentions size.
+            # Put indices into buckets based on candidate size.
             keys = []
             for i in split:
-                num_mentions = sources[0][i].n_mentions
-                keys.append((i, num_mentions))
+                n_candidates = sources[4][i].n_candidates
+                keys.append((i, n_candidates))
             keys = sorted(keys, key=lambda __key: __key[1])
 
             # Group indices from buckets into batches, so that
@@ -596,11 +596,11 @@ def MakeCrossIterator(sources,
 
     for i in range(num_splits):
         for j, split in enumerate(order_splits):
-            # Put indices into buckets based on mentions size.
+            # Put indices into buckets based on candidate size.
             keys = []
             for k in split:
-                num_mentions = sources[0][k].n_mentions
-                keys.append((k, num_mentions))
+                n_candidates = sources[4][k].n_candidates
+                keys.append((k, n_candidates))
             keys = sorted(keys, key=lambda __key: __key[1])
             batches = cross_eval_batches if i == j else (cross_dev_batches
                        if (i>0 and i-1==j) or (i==0 and j==num_splits-1) else cross_training_batches)

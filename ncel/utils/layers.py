@@ -180,7 +180,7 @@ class MLP(nn.Module):
         self.num_mlp_layers = num_mlp_layers
         self.mlp_ln = mlp_ln
         self.dropout_rate = dropout_rate
-        features_dim = mlp_input_dim,
+        features_dim = mlp_input_dim
         self.hidden_dim = mlp_dim
         if mlp_ln:
             self.ln_inp = LayerNormalization(mlp_input_dim)

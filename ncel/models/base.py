@@ -35,8 +35,8 @@ def get_batch(batch):
     max_length = np.max(num_candidates)
 
     # Truncate batch.
-    x_batch = truncate(x, max_length, True)
-    candidate_ids_batch = truncate(candidate_ids, max_length, False)
+    x_batch = truncate(x, max_length, False)
+    candidate_ids_batch = truncate(candidate_ids, max_length, True)
     y_batch = truncate(y, max_length, False)
 
     return x_batch, candidate_ids_batch, y_batch, num_candidates, docs
@@ -234,7 +234,7 @@ def load_data_and_embeddings(
         eval_iterators.append(eval_itset)
 
     feature_dim = feature_manager.getFeatureDim()
-    # print(feature_dim)
+
     vocabulary = (word_vocab, entity_vocab, id2wiki_vocab)
 
     return vocabulary, initial_embeddings, training_data_iter, eval_iterators, training_data_length, feature_dim
