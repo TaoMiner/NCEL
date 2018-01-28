@@ -455,7 +455,7 @@ def PreprocessDataset(
         Num_candidates.append(num_candidate)
     # corpus_size * mention_num * candidate*num
     # np.array of documents
-    return np.array(X), np.array(All_candidates_ids), np.array(Y), np.array(Num_candidates), np.array(dataset)
+    return np.array(X), np.array(All_candidates_ids,dtype=np.int32), np.array(Y), np.array(Num_candidates), np.array(dataset)
 
 def MakeTrainingIterator(
         sources,

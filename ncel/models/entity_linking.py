@@ -9,7 +9,7 @@ import gflags
 from ncel.utils import afs_safe_logger
 from ncel.utils.data import SimpleProgressBar
 from ncel.utils.logging import stats, create_log_formatter
-from ncel.utils.logging import eval_stats, print_samples
+from ncel.utils.logging import eval_stats, print_samples, finalStats
 import ncel.utils.logging_pb2 as pb
 from ncel.utils.trainer import ModelTrainer
 
@@ -52,7 +52,6 @@ def evaluate(FLAGS, model, eval_set, log_entry,
     samples = None
 
     model.eval()
-    max_candidates = dataset[1].shape[1]
 
     for i, dataset_batch in enumerate(dataset):
         batch = get_batch(dataset_batch)
@@ -73,14 +72,14 @@ def evaluate(FLAGS, model, eval_set, log_entry,
         target = torch.from_numpy(eval_y_batch).long()
 
         # get the index of the max log-probability
-        pred = output.max(1, keepdim=False)[1].cpu()
-        glod = target.max(1, keepdim=False)[1].cpu()
+        pred = output.max(2, keepdim=False)[1].cpu()
+        glod = target.max(2, keepdim=False)[1].cpu()
         total_target = target.size(0)
         candidate_correct = pred.eq(glod).sum() - total_target + batch_candidates
 
         # Calculate mention accuracy.
         batch_mentions, mention_correct, batch_docs, doc_acc_per_batch =\
-            ComputeMentionAccuracy(output.numpy(), eval_y_batch, max_candidates, eval_doc_batch, NIL_thred=0.1)
+            ComputeMentionAccuracy(output.numpy(), eval_y_batch, eval_doc_batch, NIL_thred=0.1)
 
         A.add('candidate_correct', candidate_correct)
         A.add('candidate_batch', batch_candidates)
@@ -120,9 +119,11 @@ def evaluate(FLAGS, model, eval_set, log_entry,
             ".report")
         reporter.write_report(eval_report_path)
 
+    eval_candidate_accuracy = eval_log.eval_candidate_accuracy
     eval_mention_accuracy = eval_log.eval_mention_accuracy
+    eval_document_accuracy = eval_log.eval_document_accuracy
 
-    return eval_mention_accuracy
+    return eval_candidate_accuracy, eval_mention_accuracy, eval_document_accuracy
 
 def train_loop(
         FLAGS,
@@ -131,14 +132,13 @@ def train_loop(
         training_data_iter,
         eval_iterators,
         logger,
-        vocabulary):
+        vocabulary,
+        final_A):
     # Accumulate useful statistics.
     A = Accumulator(maxlen=FLAGS.deque_length)
 
     # Train.
     logger.Log("Training.")
-
-    max_candidates = FLAGS.max_candidates_per_document
 
     # New Training Loop
     progress_bar = SimpleProgressBar(
@@ -172,25 +172,26 @@ def train_loop(
         # Reset cached gradients.
         trainer.optimizer_zero_grad()
 
-        # Run model. output: (batch_size * node_num) * 2
+        # Run model. output: batch_size * node_num * 2
         output = model(x, candidate_ids, num_candidates)
 
         # Calculate class accuracy.
+        # y: batch_size * node_num * 2, np.narray
         target = torch.from_numpy(y).long()
 
         # get the index of the max log-probability
-        # y: (batch_size * node_num) * 2
-        pred = output.max(1, keepdim=False)[1].cpu()
-        glod = target.max(1, keepdim=False)[1].cpu()
+        pred = output.max(2, keepdim=False)[1].cpu()
+        glod = target.max(2, keepdim=False)[1].cpu()
+
         total_target = target.size(0)
         candidate_acc = (pred.eq(glod).sum()-total_target+total_candidates) / float(total_candidates)
 
         # Calculate mention accuracy.
         batch_mentions, mention_correct, batch_docs, doc_acc_per_batch = \
-            ComputeMentionAccuracy(output.numpy(), y, max_candidates, docs, NIL_thred=NIL_THRED)
+            ComputeMentionAccuracy(output.numpy(), y, docs, NIL_thred=NIL_THRED)
 
         # Calculate class loss.
-        xent_loss = nn.BCELoss()(output, to_gpu(Variable(target, volatile=False)))
+        xent_loss = nn.CrossEntropyLoss()(output.view(-1, 2), to_gpu(Variable(target.view(-1, 2), volatile=False)))
 
         # Backward pass.
         xent_loss.backward()
@@ -224,8 +225,9 @@ def train_loop(
                     FLAGS, model, eval_set, log_entry, logger, show_sample=(
                         trainer.step %
                         FLAGS.sample_interval_steps == 0), vocabulary=vocabulary, eval_index=index)
-                if  index == 0:
-                    trainer.new_dev_accuracy(acc)
+                if index == 0: dev_acc = acc
+                else: test_acc = acc
+            trainer.new_accuracy(dev_acc, test_acc=test_acc)
             progress_bar.reset()
 
         if trainer.step > FLAGS.ckpt_step and trainer.step % FLAGS.ckpt_interval_steps == 0:
@@ -237,6 +239,14 @@ def train_loop(
 
         progress_bar.step(i=(trainer.step % FLAGS.statistics_interval_steps) + 1,
                           total=FLAGS.statistics_interval_steps)
+    # record train acc and eval acc
+    final_A.add('dev_cacc', trainer.best_dev_cacc)
+    final_A.add('dev_macc', trainer.best_dev_macc)
+    final_A.add('dev_dacc', trainer.best_dev_dacc)
+    if trainer.best_test_cacc is not None:
+        final_A.add('test_cacc', trainer.best_test_cacc)
+        final_A.add('test_macc', trainer.best_test_macc)
+        final_A.add('test_dacc', trainer.best_test_dacc)
 
 def run(only_forward=False):
     # todo : revise create_log_formatter
@@ -287,6 +297,7 @@ def run(only_forward=False):
             print(log_entry)
             logger.LogEntry(log_entry)
     else:
+        final_A = Accumulator(maxlen=FLAGS.deque_length)
         for cur_loop in range(total_loops):
             logger.Log("Cross validation the {}/{} loop ...".format(cur_loop, total_loops))
             train_loop(
@@ -296,7 +307,9 @@ def run(only_forward=False):
                 training_data_iter[cur_loop],
                 eval_iterators[cur_loop],
                 logger,
-                vocabulary)
+                vocabulary,
+                final_A)
+        finalStats(final_A, logger)
 
 if __name__ == '__main__':
     get_flags()

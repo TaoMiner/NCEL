@@ -43,6 +43,14 @@ class ModelTrainer(object):
         self.best_dev_error = 1.0
         self.best_dev_step = 0
 
+        # record best dev, test acc
+        self.best_dev_cacc = None
+        self.best_dev_macc = None
+        self.best_dev_dacc = None
+        self.best_test_cacc = None
+        self.best_test_macc = None
+        self.best_test_dacc = None
+
         # GPU support.
         self.gpu = FLAGS.gpu
         the_gpu.gpu = FLAGS.gpu
@@ -101,16 +109,26 @@ class ModelTrainer(object):
         if self.sparse_optimizer is not None:
             self.sparse_optimizer.zero_grad()
 
-    def new_dev_accuracy(self, acc):
+    def new_accuracy(self, dev_acc, test_acc=None):
         # Track best dev error
-        if (1 - acc) < 0.99 * self.best_dev_error:
-            self.best_dev_error = 1 - acc
+        dev_cacc, dev_macc, dev_dacc = dev_acc
+        if test_acc is not None:
+            test_cacc, test_macc, test_dacc = test_acc
+        if (1 - dev_macc) < 0.99 * self.best_dev_error:
+            self.best_dev_error = 1 - dev_macc
             self.best_dev_step = self.step
             if self.ckpt_on_best_dev_error and self.step > self.ckpt_step:
                 self.logger.Log(
                     "Checkpointing with new best dev accuracy of %f" %
-                    acc)
+                    dev_macc)
                 self.save(self.best_checkpoint_path)
+            self.best_dev_cacc = dev_cacc
+            self.best_dev_macc = dev_macc
+            self.best_dev_dacc = dev_dacc
+            if test_acc is not None:
+                self.best_test_cacc = test_cacc
+                self.best_test_macc = test_macc
+                self.best_test_dacc = test_dacc
 
         # Learning rate decay
         if self.learning_rate_decay_when_no_progress != 1.0:

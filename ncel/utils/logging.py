@@ -28,6 +28,15 @@ class InspectModel(object):
 def inspect(model):
     return InspectModel(model)
 
+def finalStats(final_A, logger):
+    # todo: average total candidates and mentions docs,time
+    # time_metric = time_per_token(final_A.get('total_candidates'), A.get('total_time'))
+    logger.Log("dev best:\n cacc:{}, macc:{}, dacc:{}.".format(
+        final_A.get_avg('dev_cacc'), final_A.get_avg('dev_macc'), final_A.get_avg('dev_dacc')))
+    # todo: check exist and revise dev or test string
+    logger.Log("test best:\n cacc:{}, macc:{}, dacc:{}.".format(
+        final_A.get_avg('test_cacc'), final_A.get_avg('test_macc'), final_A.get_avg('test_dacc')))
+
 def stats(model, trainer, A, log_entry):
     time_metric = time_per_token(A.get('total_candidates'), A.get('total_time'))
 
@@ -40,7 +49,6 @@ def stats(model, trainer, A, log_entry):
     log_entry.time_per_token_seconds = time_metric
 
     return log_entry
-
 
 def eval_stats(model, A, eval_data):
     candidate_correct = A.get('candidate_correct')

@@ -2,6 +2,7 @@
 import math
 
 import torch
+from torch.autograd import Variable
 
 from torch.nn.parameter import Parameter
 from torch.nn.modules.module import Module
@@ -46,17 +47,23 @@ class GraphConvolutionNetwork(Module):
         self.num_layers = num_layers
         self.dropout_rate = dropout
         self.hidden_dim = hidden_dim
+        self.gc_ln = gc_ln
 
-        if gc_ln:
+        if self.gc_ln:
             self.ln_inp = LayerNormalization(input_dim)
 
         features_dim = input_dim
+        layer_diff = int((input_dim - hidden_dim)/num_layers)
+        layer_dim = features_dim - layer_diff
 
         for i in range(num_layers):
-            setattr(self, 'l{}'.format(i), GraphConvolution(features_dim, hidden_dim, bias=bias))
-            if gc_ln:
-                setattr(self, 'ln{}'.format(i), LayerNormalization(hidden_dim))
-            features_dim = hidden_dim
+            if i == num_layers - 1 : layer_dim = hidden_dim
+            setattr(self, 'l{}'.format(i), GraphConvolution(features_dim, layer_dim, bias=bias))
+            setattr(self, 'f{}'.format(i), layer_dim)
+            if self.gc_ln:
+                setattr(self, 'ln{}'.format(i), LayerNormalization(layer_dim))
+            features_dim = layer_dim
+            layer_dim -= layer_diff
 
     def forward(self, input, adj, mask=None):
         batch_size, node_num, feature_dim = input.size()
@@ -65,10 +72,13 @@ class GraphConvolutionNetwork(Module):
         h = F.dropout(input, self.dropout_rate, training=self.training)
         for i in range(self.num_layers):
             layer = getattr(self, 'l{}'.format(i))
-            h = layer(input, adj)
+            h = layer(h, adj)
             h = F.relu(h)
             if not isinstance(mask, type(None)):
-                h = h * mask.unsqueeze(2).expand(batch_size, node_num, self.hidden_dim)
+                f = getattr(self, 'f{}'.format(i))
+                gc_mask = mask.unsqueeze(2).expand(batch_size, node_num, f)
+                gc_mask = gc_mask.float()
+                h = h * gc_mask
             if self.gc_ln:
                 ln = getattr(self, 'ln{}'.format(i))
                 h = ln(h)
@@ -99,7 +109,7 @@ class GraphConvolution(Module):
     # input: batch_size * node_num * in_features
     # adj : batch_size * node_num * node_num
     def forward(self, input, adj):
-        support = input.matmul(self.weight.t())
+        support = input.matmul(self.weight)
         output = torch.bmm(adj, support)
 
         if self.bias is not None:
@@ -128,16 +138,21 @@ class MLPClassifier(nn.Module):
         self.classifier_dropout_rate = classifier_dropout_rate
         self.hidden_dim = mlp_dim
 
-        features_dim = mlp_input_dim
-
         if mlp_ln:
             self.ln_inp = LayerNormalization(mlp_input_dim)
 
+        features_dim = mlp_input_dim
+        layer_diff = int((mlp_input_dim - mlp_dim) / num_mlp_layers)
+        layer_dim = features_dim - layer_diff
+
         for i in range(num_mlp_layers):
-            setattr(self, 'l{}'.format(i), Linear()(features_dim, mlp_dim))
+            if i == num_mlp_layers - 1: layer_dim = mlp_dim
+            setattr(self, 'l{}'.format(i), Linear()(features_dim, layer_dim))
+            setattr(self, 'f{}'.format(i), layer_dim)
             if mlp_ln:
-                setattr(self, 'ln{}'.format(i), LayerNormalization(mlp_dim))
-            features_dim = mlp_dim
+                setattr(self, 'ln{}'.format(i), LayerNormalization(layer_dim))
+            features_dim = layer_dim
+            layer_dim -= layer_diff
         setattr(
             self,
             'l{}'.format(num_mlp_layers),
@@ -155,7 +170,10 @@ class MLPClassifier(nn.Module):
             h = layer(h)
             h = F.relu(h)
             if not isinstance(mask, type(None)):
-                h = h * mask.unsqueeze(2).expand(batch_size, node_num, self.hidden_dim)
+                f = getattr(self, 'f{}'.format(i))
+                mlp_mask = mask.unsqueeze(2).expand(batch_size, node_num, f)
+                mlp_mask = mlp_mask.float()
+                h = h * mlp_mask
             if self.mlp_ln:
                 ln = getattr(self, 'ln{}'.format(i))
                 h = ln(h)
@@ -180,16 +198,22 @@ class MLP(nn.Module):
         self.num_mlp_layers = num_mlp_layers
         self.mlp_ln = mlp_ln
         self.dropout_rate = dropout_rate
-        features_dim = mlp_input_dim
         self.hidden_dim = mlp_dim
         if mlp_ln:
             self.ln_inp = LayerNormalization(mlp_input_dim)
 
+        features_dim = mlp_input_dim
+        layer_diff = int((mlp_input_dim - mlp_dim) / num_mlp_layers)
+        layer_dim = features_dim - layer_diff
+
         for i in range(num_mlp_layers):
-            setattr(self, 'l{}'.format(i), Linear()(features_dim, mlp_dim))
+            if i == num_mlp_layers - 1: layer_dim = mlp_dim
+            setattr(self, 'l{}'.format(i), Linear()(features_dim, layer_dim))
+            setattr(self, 'f{}'.format(i), layer_dim)
             if mlp_ln:
-                setattr(self, 'ln{}'.format(i), LayerNormalization(mlp_dim))
-            features_dim = mlp_dim
+                setattr(self, 'ln{}'.format(i), LayerNormalization(layer_dim))
+            features_dim = layer_dim
+            layer_dim -= layer_diff
 
     def forward(self, h, mask=None):
         batch_size, node_num, feature_dim = h.size()
@@ -201,7 +225,10 @@ class MLP(nn.Module):
             h = layer(h)
             h = F.relu(h)
             if not isinstance(mask, type(None)):
-                h = h * mask.unsqueeze(2).expand(batch_size, node_num, self.hidden_dim)
+                f = getattr(self, 'f{}'.format(i))
+                mlp_mask = mask.unsqueeze(2).expand(batch_size, node_num, f)
+                mlp_mask = mlp_mask.float()
+                h = h * mlp_mask
             if self.mlp_ln:
                 ln = getattr(self, 'ln{}'.format(i))
                 h = ln(h)
@@ -246,4 +273,7 @@ class Embed(nn.Module):
         else:
             embeds = self.vectors.take(
                 tokens.data.cpu().numpy().ravel(), axis=0)
+            embeds = to_gpu(Variable(
+                    torch.from_numpy(embeds),
+                    volatile=tokens.volatile))
         return embeds
