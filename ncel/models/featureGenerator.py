@@ -149,7 +149,7 @@ class FeatureGenerator:
         for m in doc.mentions:
             for i, c in enumerate(m.candidates):
                 candidate_ids.append(c.id)
-                gold_ids.append([1,0] if c.getIsGlod() else [0,1])
+                gold_ids.append(1 if c.getIsGlod() else 0)
         return np.array(gold_ids), np.array(candidate_ids, dtype=np.int32)
 
     def getFeatures(self, doc):

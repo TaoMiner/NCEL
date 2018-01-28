@@ -72,14 +72,13 @@ def evaluate(FLAGS, model, eval_set, log_entry,
         target = torch.from_numpy(eval_y_batch).long()
 
         # get the index of the max log-probability
-        pred = output.max(2, keepdim=False)[1].cpu()
-        glod = target.max(2, keepdim=False)[1].cpu()
+        pred = output.data.max(2, keepdim=False)[1].cpu()
         total_target = target.size(0)
-        candidate_correct = pred.eq(glod).sum() - total_target + batch_candidates
+        candidate_correct = pred.eq(target).sum() - total_target + batch_candidates
 
         # Calculate mention accuracy.
         batch_mentions, mention_correct, batch_docs, doc_acc_per_batch =\
-            ComputeMentionAccuracy(output.numpy(), eval_y_batch, eval_doc_batch, NIL_thred=0.1)
+            ComputeMentionAccuracy(output.data.cpu().numpy(), eval_y_batch, eval_doc_batch, NIL_thred=0.1)
 
         A.add('candidate_correct', candidate_correct)
         A.add('candidate_batch', batch_candidates)
@@ -180,15 +179,14 @@ def train_loop(
         target = torch.from_numpy(y).long()
 
         # get the index of the max log-probability
-        pred = output.max(2, keepdim=False)[1].cpu()
-        glod = target.max(2, keepdim=False)[1].cpu()
+        pred = output.data.max(2, keepdim=False)[1].cpu()
 
         total_target = target.size(0)
-        candidate_acc = (pred.eq(glod).sum()-total_target+total_candidates) / float(total_candidates)
+        candidate_acc = (pred.eq(target).sum()-total_target+total_candidates) / float(total_candidates)
 
         # Calculate mention accuracy.
         batch_mentions, mention_correct, batch_docs, doc_acc_per_batch = \
-            ComputeMentionAccuracy(output.numpy(), y, docs, NIL_thred=NIL_THRED)
+            ComputeMentionAccuracy(output.data.cpu().numpy(), y, docs, NIL_thred=NIL_THRED)
 
         # Calculate class loss.
         xent_loss = nn.CrossEntropyLoss()(output.view(-1, 2), to_gpu(Variable(target.view(-1, 2), volatile=False)))

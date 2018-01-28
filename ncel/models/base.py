@@ -37,7 +37,7 @@ def get_batch(batch):
     # Truncate batch.
     x_batch = truncate(x, max_length, False)
     candidate_ids_batch = truncate(candidate_ids, max_length, True)
-    y_batch = truncate(y, max_length, False)
+    y_batch = truncate(y, max_length, True)
 
     return x_batch, candidate_ids_batch, y_batch, num_candidates, docs
 
