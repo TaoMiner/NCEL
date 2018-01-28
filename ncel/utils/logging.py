@@ -33,7 +33,6 @@ def finalStats(final_A, logger):
     # time_metric = time_per_token(final_A.get('total_candidates'), A.get('total_time'))
     logger.Log("dev best:\n cacc:{}, macc:{}, dacc:{}.".format(
         final_A.get_avg('dev_cacc'), final_A.get_avg('dev_macc'), final_A.get_avg('dev_dacc')))
-    # todo: check exist and revise dev or test string
     logger.Log("test best:\n cacc:{}, macc:{}, dacc:{}.".format(
         final_A.get_avg('test_cacc'), final_A.get_avg('test_macc'), final_A.get_avg('test_dacc')))
 
@@ -63,7 +62,7 @@ def eval_stats(model, A, eval_data):
     batch_docs = A.get('doc_batch')
     eval_data.eval_document_accuracy = sum(doc_acc_per_batch) / float(len(batch_docs))
 
-    time_metric = time_per_token(A.get('total_tokens'), A.get('total_time'))
+    time_metric = time_per_token(A.get('total_candidates'), A.get('total_time'))
     eval_data.time_per_token_seconds = time_metric
 
     return eval_data
@@ -97,6 +96,7 @@ def log_formatter(log_entry):
         'ment_acc': log_entry.mention_accuracy,
         'doc_acc': log_entry.document_accuracy,
         'total_loss': log_entry.total_cost,
+        'time': log_entry.time_per_token_seconds,
     }
 
     log_str = train_format(log_entry).format(**args)
@@ -104,9 +104,10 @@ def log_formatter(log_entry):
         for evaluation in log_entry.evaluation:
             eval_args = {
                 'step': log_entry.step,
-        'cand_acc': log_entry.candidate_accuracy,
-        'ment_acc': log_entry.mention_accuracy,
-        'doc_acc': log_entry.document_accuracy,
+                'cand_acc': log_entry.candidate_accuracy,
+                'ment_acc': log_entry.mention_accuracy,
+                'doc_acc': log_entry.document_accuracy,
+                'time': log_entry.time_per_token_seconds,
             }
             log_str += '\n' + \
                 eval_format(evaluation).format(**eval_args)
@@ -137,6 +138,7 @@ def print_samples(candidate_ids, output, vocabulary, docs, only_one=False):
         doc_token_sequence = []
         doc = docs[b]
         doc_cand_ids = candidate_ids[b]
+        out_doc = output[b, :, 0]
         c_idx = 0
         start = 0
         for mention in doc.mentions:
@@ -148,12 +150,12 @@ def print_samples(candidate_ids, output, vocabulary, docs, only_one=False):
             for candidate in mention.candidates:
                 cid = doc_cand_ids[c_idx]
                 assert candidate.id == cid, "Error match candidates for printing sample!"
-                prob_cid = output[b*max_candidates+c_idx, 0]
-                if pred_cid > largest_prob : pred_cid = cid
+                prob_cid = out_doc[c_idx]
+                if prob_cid > largest_prob : pred_cid = cid
                 c_idx += 1
             doc_token_sequence.append("[[{}({})|{}|{}]]".format(ent_label_vocab[pred_cid], largest_prob,
                        mention.gold_ent_str() if not mention._is_NIL else 'NIL', mention._mention_str))
-            start = end
+            start = mention._mention_end
         doc_token_sequence.extend([word_label_vocab[token] for token in doc.tokens[start:]])
         sample_sequences.append(' '.join(doc_token_sequence))
     return sample_sequences

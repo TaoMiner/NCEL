@@ -44,12 +44,12 @@ class ModelTrainer(object):
         self.best_dev_step = 0
 
         # record best dev, test acc
-        self.best_dev_cacc = None
-        self.best_dev_macc = None
-        self.best_dev_dacc = None
-        self.best_test_cacc = None
-        self.best_test_macc = None
-        self.best_test_dacc = None
+        self.best_dev_cacc = 0
+        self.best_dev_macc = 0
+        self.best_dev_dacc = 0
+        self.best_test_cacc = 0
+        self.best_test_macc = 0
+        self.best_test_dacc = 0
 
         # GPU support.
         self.gpu = FLAGS.gpu

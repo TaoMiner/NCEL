@@ -76,7 +76,7 @@ def ComputeMentionAccuracy(output, y, docs, NIL_thred=0.1):
         dm_correct = 0
         total_mentions += len(doc.mentions)
         out_doc = output[i,:,0]
-        y_doc = y[i,:,0]
+        y_doc = y[i,:]
         mc_start = 0
         for j, mention in enumerate(doc.mentions):
             mc_end = mc_start + len(mention.candidates)

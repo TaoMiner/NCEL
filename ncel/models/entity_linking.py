@@ -65,7 +65,7 @@ def evaluate(FLAGS, model, eval_set, log_entry,
 
         if show_sample:
             samples = print_samples(
-                eval_candidate_ids_batch, output, vocabulary, eval_doc_batch, only_one=True)
+                eval_candidate_ids_batch, output.data.cpu().numpy(), vocabulary, eval_doc_batch, only_one=True)
             show_sample=False
 
         # Calculate candidate accuracy.
@@ -92,7 +92,7 @@ def evaluate(FLAGS, model, eval_set, log_entry,
 
         if FLAGS.write_eval_report and report_sample:
             batch_samples = print_samples(
-                eval_candidate_ids_batch, output, vocabulary, eval_doc_batch, only_one=False)
+                eval_candidate_ids_batch, output.data.cpu().numpy(), vocabulary, eval_doc_batch, only_one=False)
             reporter.save_batch(batch_samples)
 
         # Print Progress
@@ -175,8 +175,8 @@ def train_loop(
         output = model(x, candidate_ids, num_candidates)
 
         # Calculate class accuracy.
-        # y: batch_size * node_num * 2, np.narray
-        target = torch.from_numpy(y).long()
+        # y: batch_size * node_num
+        target = torch.from_numpy(y).long().view(-1)
 
         # get the index of the max log-probability
         pred = output.data.max(2, keepdim=False)[1].cpu()
@@ -189,7 +189,7 @@ def train_loop(
             ComputeMentionAccuracy(output.data.cpu().numpy(), y, docs, NIL_thred=NIL_THRED)
 
         # Calculate class loss.
-        xent_loss = nn.CrossEntropyLoss()(output.view(-1, 2), to_gpu(Variable(target.view(-1, 2), volatile=False)))
+        xent_loss = nn.CrossEntropyLoss()(output.view(-1, 2), to_gpu(Variable(target, volatile=False)))
 
         # Backward pass.
         xent_loss.backward()
@@ -241,10 +241,9 @@ def train_loop(
     final_A.add('dev_cacc', trainer.best_dev_cacc)
     final_A.add('dev_macc', trainer.best_dev_macc)
     final_A.add('dev_dacc', trainer.best_dev_dacc)
-    if trainer.best_test_cacc is not None:
-        final_A.add('test_cacc', trainer.best_test_cacc)
-        final_A.add('test_macc', trainer.best_test_macc)
-        final_A.add('test_dacc', trainer.best_test_dacc)
+    final_A.add('test_cacc', trainer.best_test_cacc)
+    final_A.add('test_macc', trainer.best_test_macc)
+    final_A.add('test_dacc', trainer.best_test_dacc)
 
 def run(only_forward=False):
     # todo : revise create_log_formatter

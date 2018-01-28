@@ -221,7 +221,7 @@ def load_data_and_embeddings(
         # get both train_iter and eval_iter from eval data according to cur_validation
         training_data_iter, eval_iterators, training_data_length = MakeCrossIterator(eval_sets[0],
                                                                FLAGS.batch_size,
-                                                               FLAGS.cross_validation+2)
+                                                               FLAGS.cross_validation, logger=logger)
     else:
         eval_iterators = []
         # get eval_iter from eval data

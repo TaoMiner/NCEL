@@ -409,15 +409,14 @@ def PadDocument(
                 "Cropping not allowed. "
                 "Please set max_candidates_per_document to some sufficiently large value or allow_cropping.")
         x = x[:length, :]
-        y = y[:length, :]
+        y = y[:length]
         candidate_ids = candidate_ids[:length]
     elif paddings>0:
         x_pad = np.zeros((paddings, feature_dim), dtype=float)
-        c_pad = np.zeros(paddings, dtype=float)
-        y_pad = np.zeros((paddings, 2), dtype=float)
+        pad = np.zeros(paddings, dtype=float)
         x = np.concatenate((x, x_pad), axis=0)
-        y = np.concatenate((y, y_pad), axis=0)
-        candidate_ids = np.concatenate((candidate_ids, c_pad), axis=0)
+        y = np.concatenate((y, pad), axis=0)
+        candidate_ids = np.concatenate((candidate_ids, pad), axis=0)
     return x, candidate_ids, y
 
 # process raw data
@@ -436,7 +435,7 @@ def PreprocessDataset(
                           logger=logger, allow_cropping=allow_cropping)
     dataset = TokensToIDs(word_vocabulary, entity_vocabulary, dataset, max_candidates,
                           logger=logger, include_unresolved=include_unresolved)
-    inspectDoc(dataset[0], word_vocab=word_vocabulary)
+    # inspectDoc(dataset[0], word_vocab=word_vocabulary)
     X = []
     Y = []
     All_candidates_ids = []
@@ -455,6 +454,8 @@ def PreprocessDataset(
         Num_candidates.append(num_candidate)
     # corpus_size * mention_num * candidate*num
     # np.array of documents
+    if logger is not None:
+        logger.Log("totally {} documents!".format(len(dataset)))
     return np.array(X), np.array(All_candidates_ids,dtype=np.int32), np.array(Y), np.array(Num_candidates), np.array(dataset)
 
 def MakeTrainingIterator(
@@ -562,7 +563,10 @@ def MakeEvalIterator(
 
 def MakeCrossIterator(sources,
                     batch_size,
-                    cross_num):
+                    cross_num,
+                    logger=None):
+
+    skip_eval_num = 0
 
     def batch_iter(batches):
         num_batches = len(batches)
@@ -578,19 +582,39 @@ def MakeCrossIterator(sources,
             batch_indices = batches[order[idx]]
             yield tuple(source[batch_indices] for source in sources)
 
+    def batch_eval_iter(orders):
+        data_iter = []
+        start = -batch_size
+        skips = 0
+        while True:
+            start += batch_size
+
+            if start >= dataset_size:
+                break
+
+            batch_indices = orders[start:start + batch_size]
+            candidate_batch = tuple(source[batch_indices]
+                                    for source in sources)
+
+            if len(candidate_batch[0]) == batch_size:
+                data_iter.append(candidate_batch)
+            else:
+                skips += len(candidate_batch[0])
+        return data_iter, skips
+
     dataset_size = len(sources[0])
     order = list(range(dataset_size))
     random.shuffle(order)
     order = np.array(order)
 
-    num_splits = cross_num
+    num_splits = cross_num + 2
     order_limit = len(order) // num_splits * num_splits
     training_data_length = order_limit // num_splits * (num_splits-2)
     order = order[:order_limit]
     order_splits = np.split(order, num_splits)
     cross_training_batches = []
-    cross_dev_batches = []
-    cross_eval_batches = []
+    cross_dev_order = []
+    cross_eval_order = []
     training_data_iter = []
     eval_iterators = []
 
@@ -602,22 +626,26 @@ def MakeCrossIterator(sources,
                 n_candidates = sources[4][k].n_candidates
                 keys.append((k, n_candidates))
             keys = sorted(keys, key=lambda __key: __key[1])
-            batches = cross_eval_batches if i == j else (cross_dev_batches
-                       if (i>0 and i-1==j) or (i==0 and j==num_splits-1) else cross_training_batches)
-            # Group indices from buckets into batches, so that
-            # examples in each batch have similar length.
-            batch = []
-            for i, _ in keys:
-                batch.append(i)
-                if len(batch) == batch_size:
-                    batches.append(batch)
-                    batch = []
+            if i == j:
+                cross_eval_order.extend([key[0] for key in keys])
+            elif i-1==j or (i==0 and j==num_splits-1):
+                cross_dev_order.extend([key[0] for key in keys])
+            else:
+                batch = []
+                for k, _ in keys:
+                    batch.append(k)
+                    if len(batch) == batch_size:
+                        cross_training_batches.append(batch)
+                        batch = []
         training_iter = batch_iter(cross_training_batches)
-        dev_iter = batch_iter(cross_training_batches)
-        eval_iter = batch_iter(cross_eval_batches)
+        dev_iter, dev_skips = batch_eval_iter(cross_dev_order)
+        eval_iter, test_skips = batch_eval_iter(cross_eval_order)
+        skip_eval_num += dev_skips+test_skips
         cross_training_batches = []
-        cross_dev_batches = []
-        cross_eval_batches = []
+        cross_dev_order = []
+        cross_eval_order = []
         training_data_iter.append(training_iter)
         eval_iterators.append([dev_iter, eval_iter])
+    if logger is not None:
+        logger.Log("Totally skip {} eval examples in {} cross validation!".format(skip_eval_num, num_splits))
     return training_data_iter, eval_iterators, training_data_length

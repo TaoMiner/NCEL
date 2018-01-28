@@ -91,8 +91,9 @@ class NCEL(nn.Module):
             embed_mask = embed_mask.float()
             embeds = embeds * embed_mask
         # batch * node_num * embedding_dim
+        # todo: cosine similarity instead of dot product
         adj = torch.bmm(embeds, torch.transpose(embeds, 1, 2))
-        adj = torch.clamp(adj, 0, 1)
+        adj = adj.clamp(min=0)
         # adj: batch * node * node
         adj = normalize(adj)
         return adj
@@ -102,7 +103,7 @@ class NCEL(nn.Module):
     # length: batch_size
     def forward(self, x, candidate_ids, length):
         batch_size, node_num, feature_dim = x.shape
-        x = to_gpu(Variable(torch.from_numpy(x), volatile=True)).float()
+        x = to_gpu(Variable(torch.from_numpy(x), requires_grad=False)).float()
 
         lengths_var = to_gpu(Variable(torch.from_numpy(length))).long()
         # batch_size * node_num
