@@ -9,6 +9,7 @@ import re
 
 import numpy as np
 from ncel.utils.misc import inspectDoc
+from ncel.utils.layers import buildGraph
 
 PADDING_TOKEN = "_PAD"
 # UNK must be existed in pre-trained embeddings
@@ -397,8 +398,9 @@ def TokensToIDs(word_vocabulary, entity_vocabulary, dataset, max_candidates, log
                    "Remove {} empty docs!".format(cropped_m, cropped_d, len(dataset)-len(cropped_dataset)))
     return cropped_dataset
 
+# adj : node * node
 def PadDocument(
-        x, candidate_ids, y,
+        x, adj, y,
         length,
         allow_cropping=True):
     paddings = length - x.shape[0]
@@ -410,20 +412,21 @@ def PadDocument(
                 "Please set max_candidates_per_document to some sufficiently large value or allow_cropping.")
         x = x[:length, :]
         y = y[:length]
-        candidate_ids = candidate_ids[:length]
+        adj = adj[:length, :length]
     elif paddings>0:
         x_pad = np.zeros((paddings, feature_dim), dtype=float)
         pad = np.zeros(paddings, dtype=float)
         x = np.concatenate((x, x_pad), axis=0)
         y = np.concatenate((y, pad), axis=0)
-        candidate_ids = np.concatenate((candidate_ids, pad), axis=0)
-    return x, candidate_ids, y
+        tmp_adj = np.zeros((length, length))
+        tmp_adj += adj
+    return x, adj, y
 
 # process raw data
 def PreprocessDataset(
         dataset,
-        word_vocabulary,
-        entity_vocabulary,
+        vocabulary,
+        embeddings,
         seq_length,
         doc_length,
         max_candidates,
@@ -431,32 +434,36 @@ def PreprocessDataset(
         logger=None,
         include_unresolved=False,
         allow_cropping=False):
+
+    _, entity_embeddings, _, _ = embeddings
+    word_vocab, entity_vocab, _ = vocabulary
     dataset = TrimDataset(dataset, seq_length, doc_length, max_candidates,
                           logger=logger, allow_cropping=allow_cropping)
-    dataset = TokensToIDs(word_vocabulary, entity_vocabulary, dataset, max_candidates,
+    dataset = TokensToIDs(word_vocab, entity_vocab, dataset, max_candidates,
                           logger=logger, include_unresolved=include_unresolved)
     # inspectDoc(dataset[0], word_vocab=word_vocabulary)
     X = []
     Y = []
-    All_candidates_ids = []
+    All_adjs = []
     Num_candidates = []
     for i, doc in enumerate(dataset):
         x, candidate_ids, y = feature_manager.getFeatures(doc)
         assert x.shape[0] == y.shape[0] and x.shape[0] == candidate_ids.shape[0], "No matched features!"
         num_candidate = candidate_ids.shape[0]
+        adj = buildGraph(candidate_ids, entity_embeddings)
         # x: doc.n_candidates * feature_dim
         # candidate_ids: doc.n_candidates
         # y: doc.n_candidates * 2
-        x, candidate_ids, y = PadDocument(x, candidate_ids, y, max_candidates, allow_cropping=allow_cropping)
+        x, adj, y = PadDocument(x, adj, y, max_candidates, allow_cropping=allow_cropping)
         X.append(x)
         Y.append(y)
-        All_candidates_ids.append(candidate_ids)
+        All_adjs.append(adj)
         Num_candidates.append(num_candidate)
     # corpus_size * mention_num * candidate*num
     # np.array of documents
     if logger is not None:
         logger.Log("totally {} documents!".format(len(dataset)))
-    return np.array(X), np.array(All_candidates_ids,dtype=np.int32), np.array(Y), np.array(Num_candidates), np.array(dataset)
+    return np.array(X), np.array(All_adjs), np.array(Y), np.array(Num_candidates), np.array(dataset)
 
 def MakeTrainingIterator(
         sources,

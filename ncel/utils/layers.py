@@ -277,3 +277,43 @@ class Embed(nn.Module):
                     torch.from_numpy(embeds),
                     volatile=tokens.volatile))
         return embeds
+
+def cosSim(v1, v2):
+    res = 0
+    len_v1 = math.sqrt(np.dot(v1, v1))
+    len_v2 = math.sqrt(np.dot(v2, v2))
+    if len_v1 > 0.000001 and len_v2 > 0.000001:
+        res = np.dot(v1, v2) / len_v1 / len_v2
+        # res = (res + 1) / 2
+    if math.isnan(res) or math.isinf(res) or res < -1:
+        res = -1
+    elif res > 1 : res = 1
+    return res
+
+# input all candidates in one document, return one graph much like self attention
+def buildGraph(ids, embeddings):
+    node_num = len(ids)
+    adj = np.zeros((node_num, node_num))
+    # node * dim
+    embeds = embeddings.take(np.array(ids).ravel(), axis=0)
+
+    for i, ei in enumerate(embeds):
+        for j, ej in enumerate(embeds):
+            if i > j : continue
+            elif i == j: adj[i][j] = 1.0
+            tmp_sim = cosSim(ei, ej)
+            if tmp_sim < 0 : tmp_sim = 0
+            adj[i][j] = adj[j][i] = tmp_sim
+
+    adj = normalize(adj)
+    return adj
+
+def normalize(mx):
+    """Row-normalize sparse matrix"""
+    rowsum = np.array(mx.sum(1))
+    r_inv = np.power(rowsum, -0.5).flatten()
+    r_inv[np.isinf(r_inv) or np.isnan(r_inv)] = 0.
+    r_mat_inv = np.diag(r_inv)
+    mx = np.dot(mx, r_mat_inv)
+    norm_mx = np.dot(mx.transpose(), r_mat_inv)
+    return norm_mx

@@ -55,13 +55,13 @@ def evaluate(FLAGS, model, eval_set, log_entry,
 
     for i, dataset_batch in enumerate(dataset):
         batch = get_batch(dataset_batch)
-        eval_X_batch, eval_candidate_ids_batch, eval_y_batch, eval_num_candidates_batch, eval_doc_batch = batch
+        eval_X_batch, eval_adj_batch, eval_y_batch, eval_num_candidates_batch, eval_doc_batch = batch
         batch_candidates = eval_num_candidates_batch.sum()
         # Run model.
         output = model(
             eval_X_batch,
-            eval_candidate_ids_batch,
-            eval_num_candidates_batch)
+            eval_num_candidates_batch,
+            adj=eval_adj_batch)
 
         if show_sample:
             samples = print_samples(
@@ -164,7 +164,7 @@ def train_loop(
         start = time.time()
 
         batch = get_batch(next(training_data_iter))
-        x, candidate_ids, y, num_candidates, docs = batch
+        x, adj, y, num_candidates, docs = batch
 
         total_candidates = num_candidates.sum()
 
@@ -172,7 +172,7 @@ def train_loop(
         trainer.optimizer_zero_grad()
 
         # Run model. output: batch_size * node_num * 2
-        output = model(x, candidate_ids, num_candidates)
+        output = model(x, num_candidates, adj=adj)
 
         # Calculate class accuracy.
         # y: batch_size * node_num

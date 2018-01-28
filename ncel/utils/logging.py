@@ -122,7 +122,7 @@ def create_log_formatter():
 
 # --- Sample printing ---
 
-def print_samples(candidate_ids, output, vocabulary, docs, only_one=False):
+def print_samples(output, vocabulary, docs, only_one=False):
     # TODO: Don't show padding.
     word_vocab, entity_vocab, id2wiki_vocab = vocabulary
 
@@ -133,11 +133,10 @@ def print_samples(candidate_ids, output, vocabulary, docs, only_one=False):
         [(word_vocab[key], key) for key in word_vocab if key in word_vocab])
 
     sample_sequences = []
-    batch_size, max_candidates = candidate_ids.shape
+    batch_size, max_candidates, _ = output.shape
     for b in (list(range(batch_size)) if not only_one else [0]):
         doc_token_sequence = []
         doc = docs[b]
-        doc_cand_ids = candidate_ids[b]
         out_doc = output[b, :, 0]
         c_idx = 0
         start = 0
@@ -148,8 +147,7 @@ def print_samples(candidate_ids, output, vocabulary, docs, only_one=False):
             pred_cid = 0
             largest_prob = 0
             for candidate in mention.candidates:
-                cid = doc_cand_ids[c_idx]
-                assert candidate.id == cid, "Error match candidates for printing sample!"
+                cid = candidate.id
                 prob_cid = out_doc[c_idx]
                 if prob_cid > largest_prob : pred_cid = cid
                 c_idx += 1

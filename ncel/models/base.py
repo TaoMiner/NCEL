@@ -27,26 +27,20 @@ def log_path(FLAGS, load=False):
 
 def get_batch(batch):
     # x: batch_size * max_candidates * feature_dim
-    # candidate_ids, y: batch_size * max_candidates
+    # adj : batch_size * max_candidates * max_candidates
+    # y: batch_size * max_candidates
     # num_candidates: batch_size
     # docs: batch_size
-    x, candidate_ids, y, num_candidates, docs = batch
+    x, adj, y, num_candidates, docs = batch
 
     max_length = np.max(num_candidates)
 
     # Truncate batch.
-    x_batch = truncate(x, max_length, False)
-    candidate_ids_batch = truncate(candidate_ids, max_length, True)
-    y_batch = truncate(y, max_length, True)
+    x_batch = x[:, :max_length, :]
+    adj_batch = adj[:, :max_length, :max_length]
+    y_batch = y[:, :max_length]
 
-    return x_batch, candidate_ids_batch, y_batch, num_candidates, docs
-
-def truncate(data, max_length, is_c):
-    if not is_c:
-        data = data[:, :max_length, :]
-    else:
-        data = data[:, :max_length]
-    return data
+    return x_batch, adj_batch, y_batch, num_candidates, docs
 
 def get_data_manager(data_type):
     # Select data format.
@@ -169,6 +163,7 @@ def load_data_and_embeddings(
         entity_vocab, FLAGS.embedding_dim, FLAGS.sense_embedding_file, isSense=True)
 
     initial_embeddings = (word_embeddings, entity_embeddings, sense_embeddings, mu_embeddings)
+    vocabulary = (word_vocab, entity_vocab, id2wiki_vocab)
 
     feature_manager = get_feature_manager(initial_embeddings, FLAGS.embedding_dim,
                  str_sim=FLAGS.str_sim, prior=FLAGS.prior, hasAtt=FLAGS.att,
@@ -186,8 +181,8 @@ def load_data_and_embeddings(
                             vocab=entity_vocab, topn=topn_candidates,
                             include_unresolved=FLAGS.include_unresolved)
         eval_data = PreprocessDataset(raw_eval_sets[i],
-                                      word_vocab,
-                                      entity_vocab,
+                                      vocabulary,
+                                      initial_embeddings,
                                       FLAGS.seq_length,
                                       FLAGS.doc_length,
                                       FLAGS.max_candidates_per_document,
@@ -203,8 +198,8 @@ def load_data_and_embeddings(
                             vocab=entity_vocab, topn=topn_candidates,
                             include_unresolved=FLAGS.include_unresolved)
         training_data = PreprocessDataset(raw_training_data,
-                                          word_vocab,
-                                          entity_vocab,
+                                          vocabulary,
+                                          initial_embeddings,
                                           FLAGS.seq_length,
                                           FLAGS.doc_length,
                                           FLAGS.max_candidates_per_document,
@@ -234,8 +229,6 @@ def load_data_and_embeddings(
         eval_iterators.append(eval_itset)
 
     feature_dim = feature_manager.getFeatureDim()
-
-    vocabulary = (word_vocab, entity_vocab, id2wiki_vocab)
 
     return vocabulary, initial_embeddings, training_data_iter, eval_iterators, training_data_length, feature_dim
 
