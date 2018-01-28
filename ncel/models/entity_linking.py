@@ -64,8 +64,7 @@ def evaluate(FLAGS, model, eval_set, log_entry,
             adj=eval_adj_batch)
 
         if show_sample:
-            samples = print_samples(
-                eval_candidate_ids_batch, output.data.cpu().numpy(), vocabulary, eval_doc_batch, only_one=True)
+            samples = print_samples(output.data.cpu().numpy(), vocabulary, eval_doc_batch, only_one=True)
             show_sample=False
 
         # Calculate candidate accuracy.
@@ -91,8 +90,7 @@ def evaluate(FLAGS, model, eval_set, log_entry,
         total_candidates += batch_candidates
 
         if FLAGS.write_eval_report and report_sample:
-            batch_samples = print_samples(
-                eval_candidate_ids_batch, output.data.cpu().numpy(), vocabulary, eval_doc_batch, only_one=False)
+            batch_samples = print_samples(output.data.cpu().numpy(), vocabulary, eval_doc_batch, only_one=False)
             reporter.save_batch(batch_samples)
 
         # Print Progress

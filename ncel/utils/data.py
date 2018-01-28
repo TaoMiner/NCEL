@@ -419,8 +419,11 @@ def PadDocument(
         x = np.concatenate((x, x_pad), axis=0)
         y = np.concatenate((y, pad), axis=0)
         tmp_adj = np.zeros((length, length))
-        tmp_adj += adj
-    return x, adj, y
+        node_num = adj.shape[0]
+        for i in range(node_num):
+            for j in range(node_num):
+                tmp_adj[i][j] = adj[i][j]
+    return x, tmp_adj, y
 
 # process raw data
 def PreprocessDataset(
@@ -452,7 +455,7 @@ def PreprocessDataset(
         num_candidate = candidate_ids.shape[0]
         adj = buildGraph(candidate_ids, entity_embeddings)
         # x: doc.n_candidates * feature_dim
-        # candidate_ids: doc.n_candidates
+        # candidate_ids: doc.n_candidates * [id:mention_index]
         # y: doc.n_candidates * 2
         x, adj, y = PadDocument(x, adj, y, max_candidates, allow_cropping=allow_cropping)
         X.append(x)

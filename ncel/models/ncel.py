@@ -72,7 +72,7 @@ class NCEL(nn.Module):
         self.temperature_to_display = 0.0
 
     # x: batch_size * node_num * feature_dim
-    # candidate_ids: batch_size * node_num
+    # adj: batch_size * node_num * node_num
     # length: batch_size
     def forward(self, x, length, adj=None):
         batch_size, node_num, feature_dim = x.shape

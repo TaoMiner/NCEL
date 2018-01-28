@@ -291,18 +291,18 @@ def cosSim(v1, v2):
     return res
 
 # input all candidates in one document, return one graph much like self attention
-def buildGraph(ids, embeddings):
-    node_num = len(ids)
+def buildGraph(ids, embeddings, thred=0):
+    node_num = ids.shape[0]
     adj = np.zeros((node_num, node_num))
     # node * dim
-    embeds = embeddings.take(np.array(ids).ravel(), axis=0)
+    embeds = embeddings.take(np.array([cid[0] for cid in ids]).ravel(), axis=0)
 
     for i, ei in enumerate(embeds):
         for j, ej in enumerate(embeds):
-            if i > j : continue
+            if i > j or ids[i][1] == ids[j][1]: continue
             elif i == j: adj[i][j] = 1.0
             tmp_sim = cosSim(ei, ej)
-            if tmp_sim < 0 : tmp_sim = 0
+            if tmp_sim < thred : tmp_sim = 0
             adj[i][j] = adj[j][i] = tmp_sim
 
     adj = normalize(adj)
@@ -312,7 +312,8 @@ def normalize(mx):
     """Row-normalize sparse matrix"""
     rowsum = np.array(mx.sum(1))
     r_inv = np.power(rowsum, -0.5).flatten()
-    r_inv[np.isinf(r_inv) or np.isnan(r_inv)] = 0.
+    r_inv[np.isnan(r_inv)] = 0.
+    r_inv[np.isinf(r_inv)] = 0.
     r_mat_inv = np.diag(r_inv)
     mx = np.dot(mx, r_mat_inv)
     norm_mx = np.dot(mx.transpose(), r_mat_inv)

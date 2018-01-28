@@ -144,13 +144,14 @@ class FeatureGenerator:
         return embeds
 
     def getCandidateAndGoldIds(self, doc):
+        # cand_id: mention_index
         candidate_ids = []
         gold_ids = []
-        for m in doc.mentions:
-            for i, c in enumerate(m.candidates):
-                candidate_ids.append(c.id)
+        for i, m in enumerate(doc.mentions):
+            for j, c in enumerate(m.candidates):
+                candidate_ids.append([c.id, i])
                 gold_ids.append(1 if c.getIsGlod() else 0)
-        return np.array(gold_ids), np.array(candidate_ids, dtype=np.int32)
+        return np.array(gold_ids), np.array(candidate_ids)
 
     def getFeatures(self, doc):
         # doc.n_candidates * base_feature_dim
