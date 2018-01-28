@@ -216,6 +216,7 @@ def train_loop(
 
         if trainer.step > 0 and trainer.step % FLAGS.eval_interval_steps == 0:
             should_log = True
+            # note: at most tow eval set due to training recording best
             for index, eval_set in enumerate(eval_iterators):
                 acc = evaluate(
                     FLAGS, model, eval_set, log_entry, logger, show_sample=(
@@ -264,7 +265,7 @@ def run(only_forward=False):
 
     # Build model.
 
-    model = init_model(FLAGS, entity_embeddings, feature_dim, logger, header)
+    model = init_model(FLAGS, feature_dim, logger, header)
     epoch_length = int(training_data_length / FLAGS.batch_size)
     trainer = ModelTrainer(model, logger, epoch_length, vocabulary, FLAGS)
 
@@ -307,6 +308,7 @@ def run(only_forward=False):
             finalStats(final_A, logger)
             trainer.reset()
             trainer.optimizer_reset(FLAGS.learning_rate)
+            model.reset_parameters()
 
 if __name__ == '__main__':
     get_flags()

@@ -85,6 +85,11 @@ class GraphConvolutionNetwork(Module):
             h = F.dropout(h, self.dropout_rate, training=self.training)
         return h
 
+    def reset_parameters(self):
+        for i in range(self.num_layers):
+            layer = getattr(self, 'l{}'.format(i))
+            layer.reset_parameters()
+
 class GraphConvolution(Module):
     """
     Simple GCN layer, similar to https://arxiv.org/abs/1609.02907
@@ -185,6 +190,13 @@ class MLPClassifier(nn.Module):
         y = layer(h)
         return y
 
+    def reset_parameters(self):
+        for i in range(self.num_mlp_layers):
+            layer = getattr(self, 'l{}'.format(i))
+            layer.reset_parameters()
+        layer = getattr(self, 'l{}'.format(self.num_mlp_layers))
+        layer.reset_parameters()
+
 class MLP(nn.Module):
     def __init__(
             self,
@@ -237,6 +249,11 @@ class MLP(nn.Module):
                 self.dropout_rate,
                 training=self.training)
         return h
+
+    def reset_parameters(self):
+        for i in range(self.num_mlp_layers):
+            layer = getattr(self, 'l{}'.format(i))
+            layer.reset_parameters()
 
 def ZeroInitializer(param):
     shape = param.size()

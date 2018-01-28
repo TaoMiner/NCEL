@@ -10,11 +10,10 @@ import torch.nn.functional as F
 from ncel.utils.layers import GraphConvolutionNetwork, Embed, MLP, MLPClassifier, to_gpu
 
 
-def build_model(initial_embeddings, feature_dim, FLAGS):
+def build_model(feature_dim, FLAGS):
     model_cls = NCEL
     num_class_output = 2
     return model_cls(
-        initial_embeddings,
         FLAGS.embedding_dim,
         feature_dim,
         FLAGS.mlp_dim,
@@ -27,15 +26,13 @@ def build_model(initial_embeddings, feature_dim, FLAGS):
         gc_ln=FLAGS.gc_ln,
         num_cm_layer=FLAGS.num_cm_layer,
         cm_ln=FLAGS.cm_ln,
-        dropout=FLAGS.dropout,
-        fine_tune_loaded_embeddings=FLAGS.fine_tune_loaded_embeddings
+        dropout=FLAGS.dropout
     )
 
 
 class NCEL(nn.Module):
 
     def __init__(self,
-                 entity_embeddings,
                  embedding_dim,
                  input_dim, # feature_dim
                  mlp_dim,
@@ -48,8 +45,7 @@ class NCEL(nn.Module):
                  gc_ln=False,
                  num_cm_layer=1,
                  cm_ln=False,
-                 dropout = 0.0,
-                 fine_tune_loaded_embeddings=False
+                 dropout = 0.0
                  ):
         super(NCEL, self).__init__()
 
@@ -60,9 +56,9 @@ class NCEL(nn.Module):
                        dropout)
             hidden_dim = mlp_dim
 
-        self.gc = None
+        self.gc_layer = None
         if num_gc_layer > 0:
-            self.gc = GraphConvolutionNetwork(hidden_dim, gc_dim, gc_ln=gc_ln, bias=True,
+            self.gc_layer = GraphConvolutionNetwork(hidden_dim, gc_dim, gc_ln=gc_ln, bias=True,
                 num_layers=num_gc_layer, dropout=dropout)
             hidden_dim = gc_dim
 
@@ -93,7 +89,7 @@ class NCEL(nn.Module):
         h = self.mlp(h, mask=length_mask) if not isinstance(self.mlp, type(None)) else h
         if not isinstance(self.gc, type(None)) and adj is not None:
             adj = to_gpu(Variable(torch.from_numpy(adj), requires_grad=False)).float()
-            h = self.gc(h, adj, mask=length_mask)
+            h = self.gc_layer(h, adj, mask=length_mask)
         # h: batch * node_num * hidden
         batch_size, node_num, _ = h.size()
         output = self.classifer_mlp(h, mask=length_mask)
@@ -102,6 +98,12 @@ class NCEL(nn.Module):
         # batch_size * node_num * self._num_class
         output = masked_softmax(output, mask=mask)
         return output
+
+    def reset_parameters(self):
+        self.mlp.reset_parameters()
+        self.gc_layer.reset_parameters()
+        self.classifer_mlp.reset_parameters()
+
 
 # length: batch_size
 def sequence_mask(sequence_length, max_length):

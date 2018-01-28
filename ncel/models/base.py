@@ -472,7 +472,6 @@ def flag_defaults(FLAGS, load_log_flags=False):
 
 def init_model(
         FLAGS,
-        entity_embeddings,
         feature_dim,
         logger,
         logfile_header=None):
@@ -483,7 +482,7 @@ def init_model(
     else:
         raise NotImplementedError
 
-    model = build_model(entity_embeddings, feature_dim, FLAGS)
+    model = build_model(feature_dim, FLAGS)
 
     # Debug
     def set_debug(self):
