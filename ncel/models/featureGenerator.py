@@ -6,7 +6,8 @@ from ncel.utils.data import PADDING_ID
 class FeatureGenerator:
     def __init__(self, initial_embeddings, embedding_dim,
                  str_sim=True, prior=True, hasAtt=True,
-                 local_context_window=5, global_context_window=5):
+                 local_context_window=5, global_context_window=5,
+                 use_mu=False):
         self._has_str_sim = str_sim
         self._has_prior = prior
         self._local_window = local_context_window
@@ -15,6 +16,7 @@ class FeatureGenerator:
         (self.word_embeddings, self.entity_embeddings,
          self.sense_embeddings, self.mu_embeddings) = initial_embeddings
         self._dim = embedding_dim
+        self._use_mu = use_mu
 
         self._split_by_sent = True
         self._feature_dim = None
@@ -99,21 +101,27 @@ class FeatureGenerator:
             for cand in mention.candidates:
                 tmp_f = []
                 cand_emb = self.sense_embeddings[cand.id]
-                cand_mu_emb = self.mu_embeddings[cand.id]
+                tmp_f.append(cand_emb)
+                cand_mu_emb = None
+                if self._use_mu:
+                    cand_mu_emb = self.mu_embeddings[cand.id]
+                    tmp_f.append(cand_mu_emb)
                 if self._local_window >= 0:
                     left_sense_local_emb = self.getAttSentEmbed(cand_emb, lc_emb)
-                    left_mu_local_emb = self.getAttSentEmbed(cand_mu_emb, lc_emb)
                     right_sense_local_emb = self.getAttSentEmbed(cand_emb, rc_emb)
-                    right_mu_local_emb = self.getAttSentEmbed(cand_mu_emb, rc_emb)
-                    tmp_f.extend([left_sense_local_emb, left_mu_local_emb,
-                                  right_sense_local_emb, right_mu_local_emb])
+                    tmp_f.extend([left_sense_local_emb, right_sense_local_emb])
+                    if cand_mu_emb is not None:
+                        left_mu_local_emb = self.getAttSentEmbed(cand_mu_emb, lc_emb)
+                        right_mu_local_emb = self.getAttSentEmbed(cand_mu_emb, rc_emb)
+                        tmp_f.extend([left_mu_local_emb, right_mu_local_emb])
                 if self._global_window >= 0:
                     left_sense_global_emb = self.getAttSentEmbed(cand_emb, ls_emb)
-                    left_mu_global_emb = self.getAttSentEmbed(cand_mu_emb, ls_emb)
                     right_sense_global_emb = self.getAttSentEmbed(cand_emb, rs_emb)
-                    right_mu_global_emb = self.getAttSentEmbed(cand_mu_emb, rs_emb)
-                    tmp_f.extend([left_sense_global_emb, left_mu_global_emb,
-                                  right_sense_global_emb, right_mu_global_emb])
+                    tmp_f.extend([left_sense_global_emb, right_sense_global_emb])
+                    if cand_mu_emb is not None:
+                        left_mu_global_emb = self.getAttSentEmbed(cand_mu_emb, ls_emb)
+                        right_mu_global_emb = self.getAttSentEmbed(cand_mu_emb, rs_emb)
+                        tmp_f.extend([left_mu_global_emb, right_mu_global_emb])
                 feature.append(np.concatenate(tmp_f, axis=0))
 
         return np.array(feature)

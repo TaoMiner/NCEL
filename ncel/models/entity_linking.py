@@ -304,8 +304,9 @@ def run(only_forward=False):
                 logger,
                 vocabulary,
                 final_A)
-        finalStats(final_A, logger)
-        trainer.reset()
+            finalStats(final_A, logger)
+            trainer.reset()
+            trainer.optimizer_reset(FLAGS.learning_rate)
 
 if __name__ == '__main__':
     get_flags()

@@ -104,9 +104,9 @@ def log_formatter(log_entry):
         for evaluation in log_entry.evaluation:
             eval_args = {
                 'step': log_entry.step,
-                'cand_acc': evaluation.candidate_accuracy,
-                'ment_acc': evaluation.mention_accuracy,
-                'doc_acc': evaluation.document_accuracy,
+                'cand_acc': evaluation.eval_candidate_accuracy,
+                'ment_acc': evaluation.eval_mention_accuracy,
+                'doc_acc': evaluation.eval_document_accuracy,
                 'time': evaluation.time_per_token_seconds,
             }
             log_str += '\n' + \
