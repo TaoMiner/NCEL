@@ -53,13 +53,20 @@ class NCEL(nn.Module):
                  ):
         super(NCEL, self).__init__()
 
-        self.mlp = MLP(input_dim, mlp_dim, num_mlp_layers, mlp_ln,
-                       dropout) if num_mlp_layers > 0 else None
+        hidden_dim = input_dim
+        self.mlp = None
+        if num_mlp_layers > 0:
+            self.mlp = MLP(input_dim, mlp_dim, num_mlp_layers, mlp_ln,
+                       dropout)
+            hidden_dim = mlp_dim
 
-        self.gc = GraphConvolutionNetwork(mlp_dim, gc_dim, gc_ln=gc_ln, bias=True,
-            num_layers=num_gc_layer, dropout=dropout) if num_gc_layer>0 else None
+        self.gc = None
+        if num_gc_layer > 0:
+            self.gc = GraphConvolutionNetwork(hidden_dim, gc_dim, gc_ln=gc_ln, bias=True,
+                num_layers=num_gc_layer, dropout=dropout)
+            hidden_dim = gc_dim
 
-        self.classifer_mlp = MLPClassifier(gc_dim, classifier_dim, num_class, num_cm_layer,
+        self.classifer_mlp = MLPClassifier(hidden_dim, classifier_dim, num_class, num_cm_layer,
                                  mlp_ln=cm_ln, classifier_dropout_rate=dropout)
 
         self.embedding_dim = embedding_dim
@@ -76,20 +83,20 @@ class NCEL(nn.Module):
     # length: batch_size
     def forward(self, x, length, adj=None):
         batch_size, node_num, feature_dim = x.shape
-        x = to_gpu(Variable(torch.from_numpy(x), requires_grad=False)).float()
+        h = to_gpu(Variable(torch.from_numpy(x), requires_grad=False)).float()
 
-        lengths_var = to_gpu(Variable(torch.from_numpy(length))).long()
+        lengths_var = to_gpu(Variable(torch.from_numpy(length), requires_grad=False)).long()
         # batch_size * node_num
         length_mask = sequence_mask(lengths_var, node_num)
         # adj: batch * node_num * node_num
 
-        h = self.mlp(x, mask=length_mask) if not isinstance(self.mlp, type(None)) else x
+        h = self.mlp(h, mask=length_mask) if not isinstance(self.mlp, type(None)) else h
         if not isinstance(self.gc, type(None)) and adj is not None:
             adj = to_gpu(Variable(torch.from_numpy(adj), requires_grad=False)).float()
             h = self.gc(h, adj, mask=length_mask)
         # h: batch * node_num * hidden
         batch_size, node_num, _ = h.size()
-        output = self.classifer_mlp(h)
+        output = self.classifer_mlp(h, mask=length_mask)
         mask = length_mask.unsqueeze(2).expand(batch_size, node_num, self._num_class)
         mask = mask.float()
         # batch_size * node_num * self._num_class

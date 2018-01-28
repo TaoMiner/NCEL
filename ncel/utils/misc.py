@@ -65,7 +65,8 @@ def recursively_set_device(inp, gpu):
             inp = inp.cpu()
     return inp
 
-# batch_size * node_num * 2, np.narray
+# batch_size * node_num * 2, output, np.narray
+# batch_size * node_num, y
 def ComputeMentionAccuracy(output, y, docs, NIL_thred=0.1):
     batch_docs, max_candidates = y.shape
     doc_acc = 0.0

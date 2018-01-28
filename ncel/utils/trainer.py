@@ -78,6 +78,18 @@ class ModelTrainer(object):
                 "Resuming at step: {} with best dev accuracy: {}".format(
                     self.step, 1. - self.best_dev_error))
 
+    def reset(self):
+        self.step = 0
+        self.best_dev_error = 1.0
+        self.best_dev_step = 0
+
+        # record best dev, test acc
+        self.best_dev_cacc = 0
+        self.best_dev_macc = 0
+        self.best_dev_dacc = 0
+        self.best_test_cacc = 0
+        self.best_test_macc = 0
+        self.best_test_dacc = 0
 
     def optimizer_reset(self, learning_rate):
         self.learning_rate = learning_rate

@@ -299,11 +299,12 @@ def buildGraph(ids, embeddings, thred=0):
 
     for i, ei in enumerate(embeds):
         for j, ej in enumerate(embeds):
-            if i > j or ids[i][1] == ids[j][1]: continue
-            elif i == j: adj[i][j] = 1.0
-            tmp_sim = cosSim(ei, ej)
-            if tmp_sim < thred : tmp_sim = 0
-            adj[i][j] = adj[j][i] = tmp_sim
+            if i == j: adj[i][j] = 1.0
+            elif i > j or ids[i][1] == ids[j][1]: continue
+            else:
+                tmp_sim = cosSim(ei, ej)
+                if tmp_sim < thred : tmp_sim = 0
+                adj[i][j] = adj[j][i] = tmp_sim
 
     adj = normalize(adj)
     return adj

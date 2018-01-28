@@ -99,8 +99,8 @@ class CandidatesHandler:
         mention.candidates = self.get_candidates_for_mention(mention._mention_str, vocab=vocab, topn=topn)
         # set candidate labels
         is_NIL = True if isinstance(mention.gold_ent_id(), type(None)) else False
-        for i, cand_id in enumerate(mention.candidates):
-            if not is_NIL and cand_id == mention.gold_ent_id():
+        for i, cand in enumerate(mention.candidates):
+            if not is_NIL and cand.id == mention.gold_ent_id():
                 mention.candidates[i].setGold()
 
     def add_candidates_to_document(self, document, vocab=None, topn=None):

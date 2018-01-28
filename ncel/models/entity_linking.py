@@ -305,6 +305,7 @@ def run(only_forward=False):
                 vocabulary,
                 final_A)
         finalStats(final_A, logger)
+        trainer.reset()
 
 if __name__ == '__main__':
     get_flags()

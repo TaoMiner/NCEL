@@ -104,10 +104,10 @@ def log_formatter(log_entry):
         for evaluation in log_entry.evaluation:
             eval_args = {
                 'step': log_entry.step,
-                'cand_acc': log_entry.candidate_accuracy,
-                'ment_acc': log_entry.mention_accuracy,
-                'doc_acc': log_entry.document_accuracy,
-                'time': log_entry.time_per_token_seconds,
+                'cand_acc': evaluation.candidate_accuracy,
+                'ment_acc': evaluation.mention_accuracy,
+                'doc_acc': evaluation.document_accuracy,
+                'time': evaluation.time_per_token_seconds,
             }
             log_str += '\n' + \
                 eval_format(evaluation).format(**eval_args)
@@ -149,7 +149,9 @@ def print_samples(output, vocabulary, docs, only_one=False):
             for candidate in mention.candidates:
                 cid = candidate.id
                 prob_cid = out_doc[c_idx]
-                if prob_cid > largest_prob : pred_cid = cid
+                if prob_cid > largest_prob :
+                    largest_prob = prob_cid
+                    pred_cid = cid
                 c_idx += 1
             doc_token_sequence.append("[[{}({})|{}|{}]]".format(ent_label_vocab[pred_cid], largest_prob,
                        mention.gold_ent_str() if not mention._is_NIL else 'NIL', mention._mention_str))
