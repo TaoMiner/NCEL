@@ -42,7 +42,7 @@ class LayerNormalization(nn.Module):
 MIN_DISS = 2
 class GraphConvolutionNetwork(Module):
     def __init__(self, input_dim, hidden_dim, gc_ln=False, bias=True,
-            num_layers=1, dropout=0.0):
+            num_layers=1, dropout=0.0, res_gc_layer_num=0):
         super(GraphConvolutionNetwork, self).__init__()
 
         self.num_layers = num_layers
@@ -60,7 +60,12 @@ class GraphConvolutionNetwork(Module):
 
         for i in range(num_layers):
             if i == num_layers - 1 or layer_dim<=0 : layer_dim = hidden_dim
-            setattr(self, 'l{}'.format(i), GraphConvolution(features_dim, layer_dim, bias=bias))
+            if res_gc_layer_num <=0:
+                setattr(self, 'l{}'.format(i), GraphConvolution(features_dim, layer_dim, bias=bias))
+            else:
+                setattr(self, 'l{}'.format(i), ResGraphConvolution(
+                                                features_dim, layer_dim, gc_ln=gc_ln, bias=bias,
+                                                num_layers=res_gc_layer_num, dropout=dropout))
             setattr(self, 'f{}'.format(i), layer_dim)
             if self.gc_ln:
                 setattr(self, 'ln{}'.format(i), LayerNormalization(layer_dim))
@@ -91,6 +96,69 @@ class GraphConvolutionNetwork(Module):
         for i in range(self.num_layers):
             layer = getattr(self, 'l{}'.format(i))
             layer.reset_parameters()
+
+class ResGraphConvolution(Module):
+    """
+        n GCN layer with residual unit
+        """
+    def __init__(self, input_dim, hidden_dim, gc_ln=False, bias=True,
+            num_layers=3, dropout=0.0):
+        super(ResGraphConvolution, self).__init__()
+
+        self.num_layers = num_layers
+        self.dropout_rate = dropout
+        self.hidden_dim = hidden_dim
+        self.gc_ln = gc_ln
+
+        if self.gc_ln:
+            self.ln_inp = LayerNormalization(input_dim)
+
+        features_dim = input_dim
+        layer_diff = int((input_dim - hidden_dim)/num_layers)
+        if layer_diff<MIN_DISS:layer_diff = MIN_DISS
+        layer_dim = features_dim - layer_diff
+
+        for i in range(num_layers):
+            if i == num_layers - 1 or layer_dim<=0 : layer_dim = hidden_dim
+            setattr(self, 'l{}'.format(i), GraphConvolution(features_dim, layer_dim, bias=bias))
+            setattr(self, 'f{}'.format(i), layer_dim)
+            if self.gc_ln:
+                setattr(self, 'ln{}'.format(i), LayerNormalization(layer_dim))
+            features_dim = layer_dim
+            layer_dim -= layer_diff
+
+        self.skip_connect_layer = Linear()(input_dim, hidden_dim) if input_dim != hidden_dim else None
+
+    def forward(self, input, adj, mask=None):
+        batch_size, node_num, feature_dim = input.size()
+        if self.gc_ln:
+            h = self.ln_inp(input)
+        h = F.dropout(input, self.dropout_rate, training=self.training)
+        for i in range(self.num_layers):
+            layer = getattr(self, 'l{}'.format(i))
+            h = layer(h, adj)
+            h = F.relu(h)
+            if not isinstance(mask, type(None)):
+                f = getattr(self, 'f{}'.format(i))
+                gc_mask = mask.unsqueeze(2).expand(batch_size, node_num, f)
+                gc_mask = gc_mask.float()
+                h = h * gc_mask
+            if self.gc_ln:
+                ln = getattr(self, 'ln{}'.format(i))
+                h = ln(h)
+            h = F.dropout(h, self.dropout_rate, training=self.training)
+        if self.skip_connect_layer is not None:
+            h = h + self.skip_connect_layer(input)
+        else:
+            h = h + input
+        return h
+
+    def reset_parameters(self):
+        for i in range(self.num_layers):
+            layer = getattr(self, 'l{}'.format(i))
+            layer.reset_parameters()
+        if self.skip_connect_layer is not None:
+            self.skip_connect_layer.reset_parameters()
 
 class GraphConvolution(Module):
     """

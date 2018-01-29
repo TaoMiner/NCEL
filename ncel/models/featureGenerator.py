@@ -177,7 +177,7 @@ class FeatureGenerator:
                         right_mu_global_emb = self.getAttSentEmbed(cand_mu_emb, rs_emb)
                         tmp_f.extend(
                             [cosSim(cand_mu_emb, left_mu_global_emb), cosSim(cand_mu_emb, right_mu_global_emb)])
-
+                tmp_f = np.concatenate((np.array(tmp_f), cand_emb, left_sense_local_emb, right_sense_local_emb), axis=0)
                 feature.append(tmp_f)
 
         return np.array(feature)

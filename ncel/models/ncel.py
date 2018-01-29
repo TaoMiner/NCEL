@@ -26,7 +26,8 @@ def build_model(feature_dim, FLAGS):
         gc_ln=FLAGS.gc_ln,
         num_cm_layer=FLAGS.num_cm_layer,
         cm_ln=FLAGS.cm_ln,
-        dropout=FLAGS.dropout
+        dropout=FLAGS.dropout,
+        res_gc_layer_num=FLAGS.res_gc_layer_num
     )
 
 
@@ -45,7 +46,8 @@ class NCEL(nn.Module):
                  gc_ln=False,
                  num_cm_layer=1,
                  cm_ln=False,
-                 dropout = 0.0
+                 dropout = 0.0,
+                 res_gc_layer_num=0
                  ):
         super(NCEL, self).__init__()
 
@@ -59,7 +61,7 @@ class NCEL(nn.Module):
         self.gc_layer = None
         if num_gc_layer > 0:
             self.gc_layer = GraphConvolutionNetwork(hidden_dim, gc_dim, gc_ln=gc_ln, bias=True,
-                num_layers=num_gc_layer, dropout=dropout)
+                num_layers=num_gc_layer, dropout=dropout, res_gc_layer_num=res_gc_layer_num)
             hidden_dim = gc_dim
 
         self.classifer_mlp = MLPClassifier(hidden_dim, classifier_dim, num_class, num_cm_layer,

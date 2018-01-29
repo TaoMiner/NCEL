@@ -405,6 +405,7 @@ def get_flags():
         300,
         "Dimension of intermediate MLP layers.")
     gflags.DEFINE_integer("num_gc_layer", 2, "Number of Graph convolutional layers.")
+    gflags.DEFINE_integer("res_gc_layer_num", 2, "Number of res Graph convolutional layers.")
     gflags.DEFINE_boolean(
         "gc_ln",
         False,
