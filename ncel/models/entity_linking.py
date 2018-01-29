@@ -184,9 +184,9 @@ def train_loop(
         # Calculate class accuracy.
         # y: batch_size * node_num
         batch_size, max_candidates = y.shape
-        mask = sequence_mask(num_candidates, max_candidates)
+        mask = Variable(sequence_mask(num_candidates, max_candidates), volatile=True)
 
-        target = torch.from_numpy(y).masked_select(mask).float()
+        target = torch.from_numpy(y).float()
 
         # get the index of the max log-probability
         # pred = output.data.max(2, keepdim=False)[1].cpu()
@@ -200,11 +200,14 @@ def train_loop(
 
         # Calculate class loss.
         # xent_loss = nn.CrossEntropyLoss()(output.view(-1, 2), to_gpu(Variable(target, volatile=False)))
-        xent_loss = nn.BCELoss()(output[:,:,0].masked_select(mask), to_gpu(Variable(target, volatile=False)))
-        xent_loss += nn.BCELoss()(output[:,:,1].masked_select(mask), to_gpu(Variable(1-target, volatile=False)))
+        xent_loss = nn.BCELoss()(output[:,:,0].masked_select(mask.cuda()), to_gpu(Variable(target, volatile=False).masked_select(mask)))
+        xent_loss += nn.BCELoss()(output[:,:,1].masked_select(mask.cuda()), to_gpu(Variable(1-target, volatile=False).masked_select(mask)))
+        # for n,p in model.named_parameters():
+        #   print('===========\nbefore gradient:{}\n----------\n{}'.format(n, p.grad))
         # Backward pass.
         xent_loss.backward()
-
+        # for n,p in model.named_parameters():
+        #     print('===========\nbefore gradient:{}\n----------\n{}'.format(n, p.grad))
         # Hard Gradient Clipping
         nn.utils.clip_grad_norm([param for name, param in model.named_parameters() if name not in ["embed.embed.weight"]], FLAGS.clipping_max_value)
 
@@ -316,12 +319,12 @@ def run(only_forward=False):
                 logger,
                 vocabulary,
                 final_A)
-            finalStats(final_A, logger)
             trainer.reset()
             trainer.optimizer_reset(FLAGS.learning_rate)
             model.cpu()
             model.reset_parameters()
             model.cuda()
+        finalStats(final_A, logger)
 
 if __name__ == '__main__':
     get_flags()

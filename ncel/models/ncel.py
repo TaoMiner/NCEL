@@ -77,13 +77,16 @@ class NCEL(nn.Module):
     # x: batch_size * node_num * feature_dim
     # adj: batch_size * node_num * node_num
     # length: batch_size
-    def forward(self, x, length, adj=None):
+    def forward(self, x, length=None, adj=None):
         batch_size, node_num, feature_dim = x.shape
         h = to_gpu(Variable(torch.from_numpy(x), requires_grad=False)).float()
-
-        lengths_var = to_gpu(Variable(torch.from_numpy(length), requires_grad=False)).long()
-        # batch_size * node_num
-        length_mask = sequence_mask(lengths_var, node_num)
+        length_mask = None
+        if length is not None:
+            lengths_var = to_gpu(Variable(torch.from_numpy(length), requires_grad=False)).long()
+            # batch_size * node_num
+            length_mask = sequence_mask(lengths_var, node_num)
+            class_mask = length_mask.unsqueeze(2).expand(batch_size, node_num, self._num_class)
+            class_mask = class_mask.float()
         # adj: batch * node_num * node_num
 
         h = self.mlp(h, mask=length_mask) if not isinstance(self.mlp, type(None)) else h
@@ -93,10 +96,8 @@ class NCEL(nn.Module):
         # h: batch * node_num * hidden
         batch_size, node_num, _ = h.size()
         output = self.classifer_mlp(h, mask=length_mask)
-        mask = length_mask.unsqueeze(2).expand(batch_size, node_num, self._num_class)
-        mask = mask.float()
         # batch_size * node_num * self._num_class
-        output = masked_softmax(output, mask=mask)
+        output = masked_softmax(output, mask=class_mask)
         return output
 
     def reset_parameters(self):

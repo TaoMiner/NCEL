@@ -423,7 +423,8 @@ def PadDocument(
         for i in range(node_num):
             for j in range(node_num):
                 tmp_adj[i][j] = adj[i][j]
-    return x, tmp_adj, y
+        adj = tmp_adj
+    return x, adj, y
 
 # process raw data
 def PreprocessDataset(

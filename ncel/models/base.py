@@ -170,7 +170,7 @@ def load_data_and_embeddings(
                  local_context_window=FLAGS.local_context_window,
                   global_context_window=FLAGS.global_context_window)
     # update mention candidates
-    topn_candidates = FLAGS.max_candidates_per_document if FLAGS.max_candidates_per_document > 0 else None
+    topn_candidates = FLAGS.topn_candidate if FLAGS.topn_candidate > 0 else None
 
     # Trim dataset, convert token sequences to integer sequences, crop, and
     # pad. construct data iterator
