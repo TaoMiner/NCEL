@@ -246,7 +246,7 @@ def get_flags():
         "Turn this off when running experiments on HPC.")
     gflags.DEFINE_integer(
         "deque_length",
-        100,
+        500,
         "Max trailing examples to use when computing average training statistics.")
     gflags.DEFINE_string("experiment_name", "", "")
     gflags.DEFINE_string("load_experiment_name", None, "")

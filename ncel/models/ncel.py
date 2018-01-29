@@ -100,9 +100,12 @@ class NCEL(nn.Module):
         return output
 
     def reset_parameters(self):
-        self.mlp.reset_parameters()
-        self.gc_layer.reset_parameters()
-        self.classifer_mlp.reset_parameters()
+        if self.mlp is not None:
+            self.mlp.reset_parameters()
+        if self.gc_layer is not None:
+            self.gc_layer.reset_parameters()
+        if self.classifer_mlp is not None:
+            self.classifer_mlp.reset_parameters()
 
 
 # length: batch_size

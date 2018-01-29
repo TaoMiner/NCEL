@@ -72,6 +72,8 @@ def ComputeMentionAccuracy(output, y, docs, NIL_thred=0.1):
     doc_acc = 0.0
     total_mentions = 0
     total_mention_correct = 0
+    total_candidates = 0
+    total_candidates_correct = 0
 
     for i, doc in enumerate(docs):
         dm_correct = 0
@@ -80,17 +82,19 @@ def ComputeMentionAccuracy(output, y, docs, NIL_thred=0.1):
         y_doc = y[i,:]
         mc_start = 0
         for j, mention in enumerate(doc.mentions):
+            total_candidates += len(mention.candidates)
             mc_end = mc_start + len(mention.candidates)
             output_slice = out_doc[mc_start:mc_end]
             pred = np.argmax(output_slice)
             pred_prob = output_slice[pred]
             y_slice = y_doc[mc_start:mc_end]
+            total_candidates_correct += len(output_slice[output_slice==y_slice])
             if (1 not in y_slice and pred_prob <= NIL_thred) or\
                     (1 in y_slice and np.argmax(y_slice)==pred): dm_correct += 1
             mc_start = mc_end
         total_mention_correct += dm_correct
         doc_acc += dm_correct/float(len(doc.mentions))
-    return total_mentions, total_mention_correct, batch_docs, doc_acc/float(batch_docs)
+    return total_candidates, total_candidates_correct, total_mentions, total_mention_correct, batch_docs, doc_acc/float(batch_docs)
 
 def inspectDoc(doc, word_vocab=None):
     if not isinstance(word_vocab, type(None)):

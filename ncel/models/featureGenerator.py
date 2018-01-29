@@ -178,7 +178,7 @@ class FeatureGenerator:
                         tmp_f.extend(
                             [cosSim(cand_mu_emb, left_mu_global_emb), cosSim(cand_mu_emb, right_mu_global_emb)])
 
-                feature.append(np.concatenate(tmp_f, axis=0))
+                feature.append(tmp_f)
 
         return np.array(feature)
 

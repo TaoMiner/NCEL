@@ -56,7 +56,7 @@ def evaluate(FLAGS, model, eval_set, log_entry,
     for i, dataset_batch in enumerate(dataset):
         batch = get_batch(dataset_batch)
         eval_X_batch, eval_adj_batch, eval_y_batch, eval_num_candidates_batch, eval_doc_batch = batch
-        batch_candidates = eval_num_candidates_batch.sum()
+        # batch_candidates = eval_num_candidates_batch.sum()
         # Run model.
         output = model(
             eval_X_batch,
@@ -68,15 +68,15 @@ def evaluate(FLAGS, model, eval_set, log_entry,
             show_sample=False
 
         # Calculate candidate accuracy.
-        target = torch.from_numpy(eval_y_batch).long()
+        # target = torch.from_numpy(eval_y_batch).long()
 
         # get the index of the max log-probability
-        pred = output.data.max(2, keepdim=False)[1].cpu()
-        total_target = target.size(0)
-        candidate_correct = pred.eq(target).sum() - total_target + batch_candidates
+        # pred = output.data.max(2, keepdim=False)[1].cpu()
+        # total_target = target.size(0) * target.size(1)
+        # candidate_correct = pred.eq(target).sum() - total_target + batch_candidates
 
         # Calculate mention accuracy.
-        batch_mentions, mention_correct, batch_docs, doc_acc_per_batch =\
+        batch_candidates, candidate_correct, batch_mentions, mention_correct, batch_docs, doc_acc_per_batch =\
             ComputeMentionAccuracy(output.data.cpu().numpy(), eval_y_batch, eval_doc_batch, NIL_thred=0.1)
 
         A.add('candidate_correct', candidate_correct)
@@ -121,6 +121,15 @@ def evaluate(FLAGS, model, eval_set, log_entry,
     eval_document_accuracy = eval_log.eval_document_accuracy
 
     return eval_candidate_accuracy, eval_mention_accuracy, eval_document_accuracy
+
+# length: batch_size
+def sequence_mask(sequence_length, max_length):
+    lengths = torch.from_numpy(sequence_length).long()
+    batch_size = lengths.size()[0]
+    seq_range = torch.arange(0, max_length).long()
+    seq_range_expand = seq_range.unsqueeze(0).expand(batch_size, max_length)
+    seq_length_expand = lengths.unsqueeze(1)
+    return seq_range_expand < seq_length_expand
 
 def train_loop(
         FLAGS,
@@ -174,22 +183,25 @@ def train_loop(
 
         # Calculate class accuracy.
         # y: batch_size * node_num
-        target = torch.from_numpy(y).long()
+        batch_size, max_candidates = y.shape
+        mask = sequence_mask(num_candidates, max_candidates)
+
+        target = torch.from_numpy(y).masked_select(mask).float()
 
         # get the index of the max log-probability
-        pred = output.data.max(2, keepdim=False)[1].cpu()
+        # pred = output.data.max(2, keepdim=False)[1].cpu()
 
-        total_target = target.size(0)
-        candidate_acc = (pred.eq(target).sum()-total_target+total_candidates) / float(total_candidates)
+        # total_target = target.size(0) * target.size(1)
+        # candidate_acc = (pred.eq(target).sum()-total_target+total_candidates) / float(total_candidates)
 
         # Calculate mention accuracy.
-        batch_mentions, mention_correct, batch_docs, doc_acc_per_batch = \
+        batch_candidates, candidate_correct, batch_mentions, mention_correct, batch_docs, doc_acc_per_batch = \
             ComputeMentionAccuracy(output.data.cpu().numpy(), y, docs, NIL_thred=NIL_THRED)
 
         # Calculate class loss.
         # xent_loss = nn.CrossEntropyLoss()(output.view(-1, 2), to_gpu(Variable(target, volatile=False)))
-        xent_loss = nn.CrossEntropyLoss()(output[:,:,0], to_gpu(Variable(target, volatile=False)))
-        xent_loss += nn.CrossEntropyLoss()(output[:,:,1], to_gpu(Variable(1-target, volatile=False)))
+        xent_loss = nn.BCELoss()(output[:,:,0].masked_select(mask), to_gpu(Variable(target, volatile=False)))
+        xent_loss += nn.BCELoss()(output[:,:,1].masked_select(mask), to_gpu(Variable(1-target, volatile=False)))
         # Backward pass.
         xent_loss.backward()
 
@@ -203,7 +215,7 @@ def train_loop(
 
         total_time = end - start
 
-        A.add('candidate_acc', candidate_acc)
+        A.add('candidate_acc', candidate_correct/float(batch_candidates))
         A.add('mention_acc', mention_correct/float(batch_mentions))
         A.add('doc_acc', doc_acc_per_batch)
         A.add('total_candidates', total_candidates)
@@ -307,7 +319,9 @@ def run(only_forward=False):
             finalStats(final_A, logger)
             trainer.reset()
             trainer.optimizer_reset(FLAGS.learning_rate)
+            model.cpu()
             model.reset_parameters()
+            model.cuda()
 
 if __name__ == '__main__':
     get_flags()

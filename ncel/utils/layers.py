@@ -39,6 +39,7 @@ class LayerNormalization(nn.Module):
         ln_out = ln_out * self.a2 + self.b2
         return ln_out
 
+MIN_DISS = 2
 class GraphConvolutionNetwork(Module):
     def __init__(self, input_dim, hidden_dim, gc_ln=False, bias=True,
             num_layers=1, dropout=0.0):
@@ -54,10 +55,11 @@ class GraphConvolutionNetwork(Module):
 
         features_dim = input_dim
         layer_diff = int((input_dim - hidden_dim)/num_layers)
+        if layer_diff<MIN_DISS:layer_diff = MIN_DISS
         layer_dim = features_dim - layer_diff
 
         for i in range(num_layers):
-            if i == num_layers - 1 : layer_dim = hidden_dim
+            if i == num_layers - 1 or layer_dim<=0 : layer_dim = hidden_dim
             setattr(self, 'l{}'.format(i), GraphConvolution(features_dim, layer_dim, bias=bias))
             setattr(self, 'f{}'.format(i), layer_dim)
             if self.gc_ln:
