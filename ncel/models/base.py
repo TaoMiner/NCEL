@@ -177,9 +177,10 @@ def load_data_and_embeddings(
     logger.Log("Preprocessing data.")
     eval_sets = []
     for i, raw_eval_data in enumerate(raw_eval_sets):
+        logger.Log("Processing {} raw eval data ...".format(i))
         AddCandidatesToDocs(raw_eval_sets[i], candidate_handler,
                             vocab=entity_vocab, topn=topn_candidates,
-                            include_unresolved=FLAGS.include_unresolved)
+                            include_unresolved=FLAGS.include_unresolved, logger=logger)
         eval_data = PreprocessDataset(raw_eval_sets[i],
                                       vocabulary,
                                       initial_embeddings,
@@ -194,9 +195,10 @@ def load_data_and_embeddings(
     training_data_iter = None
     training_data_length = 0
     if raw_training_data is not None:
+        logger.Log("Processing raw training data ...")
         AddCandidatesToDocs(raw_training_data, candidate_handler,
                             vocab=entity_vocab, topn=topn_candidates,
-                            include_unresolved=FLAGS.include_unresolved)
+                            include_unresolved=FLAGS.include_unresolved, logger=logger)
         training_data = PreprocessDataset(raw_training_data,
                                           vocabulary,
                                           initial_embeddings,

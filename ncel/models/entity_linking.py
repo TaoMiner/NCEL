@@ -181,27 +181,26 @@ def train_loop(
         # Run model. output: batch_size * node_num * 2
         output = model(x, num_candidates, adj=adj)
 
-        # Calculate class accuracy.
-        # y: batch_size * node_num
-        batch_size, max_candidates = y.shape
-        mask = Variable(sequence_mask(num_candidates, max_candidates), volatile=True)
-
-        target = torch.from_numpy(y).float()
-
-        # get the index of the max log-probability
-        # pred = output.data.max(2, keepdim=False)[1].cpu()
-
-        # total_target = target.size(0) * target.size(1)
-        # candidate_acc = (pred.eq(target).sum()-total_target+total_candidates) / float(total_candidates)
-
         # Calculate mention accuracy.
         batch_candidates, candidate_correct, batch_mentions, mention_correct, batch_docs, doc_acc_per_batch = \
             ComputeMentionAccuracy(output.data.cpu().numpy(), y, docs, NIL_thred=NIL_THRED)
 
-        # Calculate class loss.
-        # xent_loss = nn.CrossEntropyLoss()(output.view(-1, 2), to_gpu(Variable(target, volatile=False)))
-        xent_loss = nn.BCELoss()(output[:,:,0].masked_select(mask.cuda()), to_gpu(Variable(target, volatile=False).masked_select(mask)))
-        xent_loss += nn.BCELoss()(output[:,:,1].masked_select(mask.cuda()), to_gpu(Variable(1-target, volatile=False).masked_select(mask)))
+        # y: batch_size * node_num
+        batch_size, max_candidates = y.shape
+
+        # bce loss mask: batch_size * node_num
+        mask2d = sequence_mask(num_candidates, max_candidates)
+        vmask2d = Variable(mask2d, volatile=True).cuda()
+        # cross loss mask: batch_size * node_num * 2
+        vmask3d = vmask2d.unsqueeze(2).expand(batch_size, max_candidates, 2).cuda()
+
+        target = torch.from_numpy(y).float().masked_select(mask2d)
+
+        # cross loss t
+        # Calculate loss.
+        xent_loss = nn.CrossEntropyLoss()(output.masked_select(vmask3d).view(-1, 2), to_gpu(Variable(target.long().view(-1), volatile=False)))
+        xent_loss += nn.BCELoss()(output[:,:,0].masked_select(vmask2d), to_gpu(Variable(target, volatile=False)))
+        xent_loss += nn.BCELoss()(output[:,:,1].masked_select(vmask2d), to_gpu(Variable(1-target, volatile=False)))
         # for n,p in model.named_parameters():
         #   print('===========\nbefore gradient:{}\n----------\n{}'.format(n, p.grad))
         # Backward pass.

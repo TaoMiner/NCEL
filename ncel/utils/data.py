@@ -70,7 +70,7 @@ class SimpleProgressBar(object):
         sys.stdout.write('\n')
 
 def AddCandidatesToDocs(dataset, candidate_handler, vocab=None, topn=None,
-                        include_unresolved=False):
+                        include_unresolved=False, logger=None):
     for i, doc in enumerate(dataset):
         candidate_handler.add_candidates_to_document(dataset[i], vocab=vocab, topn=topn)
         for j, mention in enumerate(doc.mentions):
@@ -79,6 +79,9 @@ def AddCandidatesToDocs(dataset, candidate_handler, vocab=None, topn=None,
                         not include_unresolved and len(mention.candidates) < 1):
                 dataset[i].mentions[j]._is_trainable = False
                 dataset[i].n_candidates -= len(dataset[i].mentions[j].candidates)
+    if logger is not None:
+        logger.Log("Add candidates success: totally {} candidates of {} mentions in {} documents!".format(
+            sum([doc.n_candidates for doc in dataset]), sum([len(doc.mentions) for doc in dataset]), len(dataset)))
 
 def BuildVocabulary(raw_training_data, raw_eval_sets, word_embedding_path, logger=None):
     # Find the set of words that occur in the data.
@@ -457,7 +460,7 @@ def PreprocessDataset(
         adj = buildGraph(candidate_ids, entity_embeddings)
         # x: doc.n_candidates * feature_dim
         # candidate_ids: doc.n_candidates * [id:mention_index]
-        # y: doc.n_candidates * 2
+        # y: doc.n_candidates
         x, adj, y = PadDocument(x, adj, y, max_candidates, allow_cropping=allow_cropping)
         X.append(x)
         Y.append(y)
@@ -465,9 +468,11 @@ def PreprocessDataset(
         Num_candidates.append(num_candidate)
     # corpus_size * mention_num * candidate*num
     # np.array of documents
+    Num_candidates = np.array(Num_candidates)
     if logger is not None:
-        logger.Log("totally {} documents!".format(len(dataset)))
-    return np.array(X), np.array(All_adjs), np.array(Y), np.array(Num_candidates), np.array(dataset)
+        logger.Log("After crop and filter: totally {} candidates of {} mentions in {} documents!".format(
+            Num_candidates.sum(), sum([len(doc.mentions) for doc in dataset]), len(dataset)))
+    return np.array(X), np.array(All_adjs), np.array(Y), Num_candidates, np.array(dataset)
 
 def MakeTrainingIterator(
         sources,
