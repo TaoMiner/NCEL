@@ -142,22 +142,23 @@ class MLPClassifier(nn.Module):
         self.mlp_ln = mlp_ln
         self.classifier_dropout_rate = classifier_dropout_rate
         self.hidden_dim = mlp_dim
+        features_dim = mlp_input_dim
 
         if mlp_ln:
             self.ln_inp = LayerNormalization(mlp_input_dim)
+        if num_mlp_layers > 0:
+            layer_diff = int((mlp_input_dim - mlp_dim) / num_mlp_layers)
+            layer_dim = features_dim - layer_diff
 
-        features_dim = mlp_input_dim
-        layer_diff = int((mlp_input_dim - mlp_dim) / num_mlp_layers)
-        layer_dim = features_dim - layer_diff
+            for i in range(num_mlp_layers):
+                if i == num_mlp_layers - 1: layer_dim = mlp_dim
+                setattr(self, 'l{}'.format(i), Linear()(features_dim, layer_dim))
+                setattr(self, 'f{}'.format(i), layer_dim)
+                if mlp_ln:
+                    setattr(self, 'ln{}'.format(i), LayerNormalization(layer_dim))
+                features_dim = layer_dim
+                layer_dim -= layer_diff
 
-        for i in range(num_mlp_layers):
-            if i == num_mlp_layers - 1: layer_dim = mlp_dim
-            setattr(self, 'l{}'.format(i), Linear()(features_dim, layer_dim))
-            setattr(self, 'f{}'.format(i), layer_dim)
-            if mlp_ln:
-                setattr(self, 'ln{}'.format(i), LayerNormalization(layer_dim))
-            features_dim = layer_dim
-            layer_dim -= layer_diff
         setattr(
             self,
             'l{}'.format(num_mlp_layers),
@@ -215,39 +216,41 @@ class MLP(nn.Module):
             self.ln_inp = LayerNormalization(mlp_input_dim)
 
         features_dim = mlp_input_dim
-        layer_diff = int((mlp_input_dim - mlp_dim) / num_mlp_layers)
-        layer_dim = features_dim - layer_diff
+        if num_mlp_layers > 0:
+            layer_diff = int((mlp_input_dim - mlp_dim) / num_mlp_layers)
+            layer_dim = features_dim - layer_diff
 
-        for i in range(num_mlp_layers):
-            if i == num_mlp_layers - 1: layer_dim = mlp_dim
-            setattr(self, 'l{}'.format(i), Linear()(features_dim, layer_dim))
-            setattr(self, 'f{}'.format(i), layer_dim)
-            if mlp_ln:
-                setattr(self, 'ln{}'.format(i), LayerNormalization(layer_dim))
-            features_dim = layer_dim
-            layer_dim -= layer_diff
+            for i in range(num_mlp_layers):
+                if i == num_mlp_layers - 1: layer_dim = mlp_dim
+                setattr(self, 'l{}'.format(i), Linear()(features_dim, layer_dim))
+                setattr(self, 'f{}'.format(i), layer_dim)
+                if mlp_ln:
+                    setattr(self, 'ln{}'.format(i), LayerNormalization(layer_dim))
+                features_dim = layer_dim
+                layer_dim -= layer_diff
 
     def forward(self, h, mask=None):
-        batch_size, node_num, feature_dim = h.size()
-        if self.mlp_ln:
-            h = self.ln_inp(h)
-        h = F.dropout(h, self.dropout_rate, training=self.training)
-        for i in range(self.num_mlp_layers):
-            layer = getattr(self, 'l{}'.format(i))
-            h = layer(h)
-            h = F.relu(h)
-            if not isinstance(mask, type(None)):
-                f = getattr(self, 'f{}'.format(i))
-                mlp_mask = mask.unsqueeze(2).expand(batch_size, node_num, f)
-                mlp_mask = mlp_mask.float()
-                h = h * mlp_mask
+        if self.num_mlp_layers>0:
+            batch_size, node_num, feature_dim = h.size()
             if self.mlp_ln:
-                ln = getattr(self, 'ln{}'.format(i))
-                h = ln(h)
-            h = F.dropout(
-                h,
-                self.dropout_rate,
-                training=self.training)
+                h = self.ln_inp(h)
+            h = F.dropout(h, self.dropout_rate, training=self.training)
+            for i in range(self.num_mlp_layers):
+                layer = getattr(self, 'l{}'.format(i))
+                h = layer(h)
+                h = F.relu(h)
+                if not isinstance(mask, type(None)):
+                    f = getattr(self, 'f{}'.format(i))
+                    mlp_mask = mask.unsqueeze(2).expand(batch_size, node_num, f)
+                    mlp_mask = mlp_mask.float()
+                    h = h * mlp_mask
+                if self.mlp_ln:
+                    ln = getattr(self, 'ln{}'.format(i))
+                    h = ln(h)
+                h = F.dropout(
+                    h,
+                    self.dropout_rate,
+                    training=self.training)
         return h
 
     def reset_parameters(self):

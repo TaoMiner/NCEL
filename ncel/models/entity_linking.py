@@ -174,7 +174,7 @@ def train_loop(
 
         # Calculate class accuracy.
         # y: batch_size * node_num
-        target = torch.from_numpy(y).long().view(-1)
+        target = torch.from_numpy(y).long()
 
         # get the index of the max log-probability
         pred = output.data.max(2, keepdim=False)[1].cpu()
@@ -187,8 +187,9 @@ def train_loop(
             ComputeMentionAccuracy(output.data.cpu().numpy(), y, docs, NIL_thred=NIL_THRED)
 
         # Calculate class loss.
-        xent_loss = nn.CrossEntropyLoss()(output.view(-1, 2), to_gpu(Variable(target, volatile=False)))
-
+        # xent_loss = nn.CrossEntropyLoss()(output.view(-1, 2), to_gpu(Variable(target, volatile=False)))
+        xent_loss = nn.CrossEntropyLoss()(output[:,:,0], to_gpu(Variable(target, volatile=False)))
+        xent_loss += nn.CrossEntropyLoss()(output[:,:,1], to_gpu(Variable(1-target, volatile=False)))
         # Backward pass.
         xent_loss.backward()
 
@@ -219,9 +220,7 @@ def train_loop(
             # note: at most tow eval set due to training recording best
             for index, eval_set in enumerate(eval_iterators):
                 acc = evaluate(
-                    FLAGS, model, eval_set, log_entry, logger, show_sample=(
-                        trainer.step %
-                        FLAGS.sample_interval_steps == 0), vocabulary=vocabulary, eval_index=index)
+                    FLAGS, model, eval_set, log_entry, logger, show_sample=False, vocabulary=vocabulary, eval_index=index)
                 if index == 0: dev_acc = acc
                 else: test_acc = acc
             trainer.new_accuracy(dev_acc, test_acc=test_acc)

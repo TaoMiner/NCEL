@@ -7,7 +7,7 @@ import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 
-from ncel.utils.layers import GraphConvolutionNetwork, Embed, MLP, MLPClassifier, to_gpu
+from ncel.utils.layers import GraphConvolutionNetwork, MLP, MLPClassifier, to_gpu
 
 
 def build_model(feature_dim, FLAGS):
