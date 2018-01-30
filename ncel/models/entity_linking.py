@@ -197,6 +197,7 @@ def train_loop(
 
         # cross loss t
         # Calculate loss.
+<<<<<<< HEAD
         xent_loss = nn.CrossEntropyLoss()(output.masked_select(vmask3d).view(-1, 2),
                                           to_gpu(Variable(target.long(), volatile=False)).masked_select(vmask2d).view(-1))
 
@@ -208,6 +209,15 @@ def train_loop(
         #   print('===========\nbefore gradient:{}\n----------\n{}'.format(n, p.grad))
         # Backward pass.
         loss.backward()
+=======
+        xent_loss = nn.CrossEntropyLoss()(output.masked_select(vmask3d).view(-1, 2), to_gpu(Variable(target.long().view(-1), volatile=False)))
+        xent_loss += nn.BCELoss()(output[:,:,0].masked_select(vmask2d), to_gpu(Variable(target, volatile=False)))
+        xent_loss += nn.BCELoss()(output[:,:,1].masked_select(vmask2d), to_gpu(Variable(1-target, volatile=False)))
+        # for n,p in model.named_parameters():
+        #   print('===========\nbefore gradient:{}\n----------\n{}'.format(n, p.grad))
+        # Backward pass.
+        xent_loss.backward()
+>>>>>>> parent of fd6d9fd... alphav0.3
         # for n,p in model.named_parameters():
         #     print('===========\nbefore gradient:{}\n----------\n{}'.format(n, p.grad))
         # Hard Gradient Clipping

@@ -149,10 +149,13 @@ class ResGraphConvolution(Module):
             h = h + self.skip_connect_layer(input)
         else:
             h = h + input
+<<<<<<< HEAD
         if not isinstance(mask, type(None)):
             gc_mask = mask.unsqueeze(2).expand(batch_size, node_num, self.hidden_dim)
             gc_mask = gc_mask.float()
             h = h * gc_mask
+=======
+>>>>>>> parent of fd6d9fd... alphav0.3
         return h
 
     def reset_parameters(self):
@@ -185,7 +188,7 @@ class GraphConvolution(Module):
 
     # input: batch_size * node_num * in_features
     # adj : batch_size * node_num * node_num
-    def forward(self, input, adj, mask=None):
+    def forward(self, input, adj):
         support = input.matmul(self.weight)
         output = torch.bmm(adj, support)
 
