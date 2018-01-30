@@ -411,16 +411,6 @@ def get_flags():
         False,
         "When True, layer normalization is used between gc layers.")
 
-    gflags.DEFINE_integer(
-        "classifier_dim",
-        300,
-        "Dimension of output MLP layers.")
-    gflags.DEFINE_integer("num_cm_layer", 1, "Number of classifier mlp layers.")
-    gflags.DEFINE_boolean(
-        "cm_ln",
-        False,
-        "When True, layer normalization is used between classifier mlp layers.")
-
     # Display settings.
     gflags.DEFINE_integer(
         "statistics_interval_steps",

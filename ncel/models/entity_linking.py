@@ -195,7 +195,7 @@ def train_loop(
 
         # cross loss t
         # Calculate loss.
-        loss = nn.BCELoss()(output.masked_select(mask2d), to_gpu(Variable(target, volatile=False).masked_select(mask2d)))
+        loss = nn.BCELoss()(output.masked_select(mask2d), to_gpu(Variable(target, volatile=False)).masked_select(mask2d))
         # for n,p in model.named_parameters():
         #   print('===========\nbefore gradient:{}\n----------\n{}'.format(n, p.grad))
         # Backward pass.

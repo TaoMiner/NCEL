@@ -38,7 +38,6 @@ class ModelTrainer(object):
         self.learning_rate_decay_when_no_progress = FLAGS.learning_rate_decay_when_no_progress
         self.training_data_length = None
         self.eval_interval_steps = FLAGS.eval_interval_steps
-        self.xling = FLAGS.xling
 
         self.step = 0
         self.best_dev_error = 1.0
