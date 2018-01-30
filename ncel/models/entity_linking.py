@@ -189,13 +189,21 @@ def train_loop(
         batch_size, max_candidates = y.shape
 
         # bce loss mask: batch_size * node_num
-        mask2d = Variable(sequence_mask(num_candidates, max_candidates), volatile=True).cuda()
-
+        mask2d = Variable(sequence_mask(num_candidates, max_candidates), volatile=True)
+        vmask2d = mask2d.cuda()
+        # cross loss mask: batch_size * node_num * 2
+        vmask3d = vmask2d.unsqueeze(2).expand(batch_size, max_candidates, 2)
         target = torch.from_numpy(y).float()
 
         # cross loss t
         # Calculate loss.
-        loss = nn.BCELoss()(output.masked_select(mask2d), to_gpu(Variable(target, volatile=False)).masked_select(mask2d))
+        xent_loss = nn.CrossEntropyLoss()(output.masked_select(vmask3d).view(-1, 2),
+                                          to_gpu(Variable(target.long(), volatile=False)).masked_select(vmask2d).view(-1))
+
+        bce_loss = nn.BCELoss()(output[:, :, 0].masked_select(vmask2d), to_gpu(Variable(target, volatile=False)).masked_select(vmask2d))
+        bce_loss += nn.BCELoss()(output[:, :, 1].masked_select(vmask2d), to_gpu(Variable(1 - target, volatile=False)).masked_select(vmask2d))
+
+        loss = bce_loss + 0.1 * xent_loss
         # for n,p in model.named_parameters():
         #   print('===========\nbefore gradient:{}\n----------\n{}'.format(n, p.grad))
         # Backward pass.

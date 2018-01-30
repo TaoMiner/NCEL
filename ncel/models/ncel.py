@@ -53,7 +53,7 @@ class NCEL(nn.Module):
                 num_layers=num_gc_layer, dropout=dropout, res_gc_layer_num=res_gc_layer_num)
             hidden_dim = gc_dim
 
-        self.classifer = Linear(initializer=UniInitializer)(hidden_dim, 1)
+        self.classifer = Linear(initializer=UniInitializer)(hidden_dim, 2)
 
     # x: batch_size * node_num * feature_dim
     # adj: batch_size * node_num * node_num
@@ -73,10 +73,11 @@ class NCEL(nn.Module):
             adj = to_gpu(Variable(torch.from_numpy(adj), requires_grad=False)).float()
             h = self.gc_layer(h, adj, mask=length_mask)
         # h: batch * node_num * hidden
-        batch_size, node_num, _ = h.size()
         output = self.classifer(h)
-        # batch_size * node_num * self._num_class
-        output = masked_softmax2d(output, mask=length_mask)
+        # batch_size * node_num * 2
+        mask = length_mask.unsqueeze(2).expand(batch_size, node_num, 2)
+        mask = mask.float()
+        output = masked_softmax(output, mask=mask)
         return output
 
     def reset_parameters(self):
