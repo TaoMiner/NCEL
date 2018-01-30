@@ -347,6 +347,7 @@ def get_flags():
                         "Used in optimizer. Decay the LR by this much every epoch steps if a new best has not been set in the last epoch.")
     gflags.DEFINE_float("clipping_max_value", 5.0, "")
     gflags.DEFINE_float("l2_lambda", 1e-5, "")
+    gflags.DEFINE_float("xling", 0.1, "balance candidate loss and mention loss.")
     gflags.DEFINE_float("dropout", 0.1, "Used for dropout.")
     gflags.DEFINE_integer("batch_size", 32, "Minibatch size.")
     gflags.DEFINE_boolean( "smart_batching", True, "Organize batches using sequence length.")
@@ -410,6 +411,16 @@ def get_flags():
         "gc_ln",
         False,
         "When True, layer normalization is used between gc layers.")
+
+    gflags.DEFINE_integer(
+        "classifier_dim",
+        300,
+        "Dimension of output MLP layers.")
+    gflags.DEFINE_integer("num_cm_layer", 1, "Number of classifier mlp layers.")
+    gflags.DEFINE_boolean(
+        "cm_ln",
+        False,
+        "When True, layer normalization is used between classifier mlp layers.")
 
     # Display settings.
     gflags.DEFINE_integer(

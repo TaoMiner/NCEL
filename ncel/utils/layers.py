@@ -39,12 +39,12 @@ class LayerNormalization(nn.Module):
         ln_out = ln_out * self.a2 + self.b2
         return ln_out
 
+MIN_DISS = 2
 class GraphConvolutionNetwork(Module):
     def __init__(self, input_dim, hidden_dim, gc_ln=False, bias=True,
             num_layers=1, dropout=0.0, res_gc_layer_num=0):
         super(GraphConvolutionNetwork, self).__init__()
 
-        self.feature_dim = input_dim
         self.num_layers = num_layers
         self.dropout_rate = dropout
         self.hidden_dim = hidden_dim
@@ -53,8 +53,9 @@ class GraphConvolutionNetwork(Module):
         if self.gc_ln:
             self.ln_inp = LayerNormalization(input_dim)
 
-        features_dim = self.feature_dim
-        layer_diff = getLayerDiff(self.feature_dim, self.hidden_dim, self.num_layers)
+        features_dim = input_dim
+        layer_diff = int((input_dim - hidden_dim)/num_layers)
+        if layer_diff<MIN_DISS:layer_diff = MIN_DISS
         layer_dim = features_dim - layer_diff
 
         for i in range(num_layers):
@@ -74,7 +75,7 @@ class GraphConvolutionNetwork(Module):
     def forward(self, input, adj, mask=None):
         batch_size, node_num, feature_dim = input.size()
         if self.gc_ln:
-            input = self.ln_inp(input)
+            h = self.ln_inp(input)
         h = F.dropout(input, self.dropout_rate, training=self.training)
         for i in range(self.num_layers):
             layer = getattr(self, 'l{}'.format(i))
@@ -113,7 +114,8 @@ class ResGraphConvolution(Module):
             self.ln_inp = LayerNormalization(input_dim)
 
         features_dim = input_dim
-        layer_diff = getLayerDiff(input_dim, hidden_dim, num_layers)
+        layer_diff = int((input_dim - hidden_dim)/num_layers)
+        if layer_diff<MIN_DISS:layer_diff = MIN_DISS
         layer_dim = features_dim - layer_diff
 
         for i in range(num_layers):
@@ -130,7 +132,7 @@ class ResGraphConvolution(Module):
     def forward(self, input, adj, mask=None):
         batch_size, node_num, feature_dim = input.size()
         if self.gc_ln:
-            input = self.ln_inp(input)
+            h = self.ln_inp(input)
         h = F.dropout(input, self.dropout_rate, training=self.training)
         for i in range(self.num_layers):
             layer = getattr(self, 'l{}'.format(i))
@@ -149,13 +151,10 @@ class ResGraphConvolution(Module):
             h = h + self.skip_connect_layer(input)
         else:
             h = h + input
-<<<<<<< HEAD
-        if not isinstance(mask, type(None)):
-            gc_mask = mask.unsqueeze(2).expand(batch_size, node_num, self.hidden_dim)
-            gc_mask = gc_mask.float()
-            h = h * gc_mask
-=======
->>>>>>> parent of fd6d9fd... alphav0.3
+            if not isinstance(mask, type(None)):
+                gc_mask = mask.unsqueeze(2).expand(batch_size, node_num, self.hidden_dim)
+                gc_mask = gc_mask.float()
+                h = h * gc_mask
         return h
 
     def reset_parameters(self):
@@ -188,7 +187,7 @@ class GraphConvolution(Module):
 
     # input: batch_size * node_num * in_features
     # adj : batch_size * node_num * node_num
-    def forward(self, input, adj):
+    def forward(self, input, adj, mask=None):
         support = input.matmul(self.weight)
         output = torch.bmm(adj, support)
 
@@ -222,11 +221,11 @@ class MLPClassifier(nn.Module):
         if mlp_ln:
             self.ln_inp = LayerNormalization(mlp_input_dim)
         if num_mlp_layers > 0:
-            layer_diff = getLayerDiff(mlp_input_dim, mlp_dim, num_mlp_layers)
+            layer_diff = int((mlp_input_dim - mlp_dim) / num_mlp_layers)
             layer_dim = features_dim - layer_diff
 
             for i in range(num_mlp_layers):
-                if i == num_mlp_layers-1 or layer_dim<=0: layer_dim = mlp_dim
+                if i == num_mlp_layers - 1: layer_dim = mlp_dim
                 setattr(self, 'l{}'.format(i), Linear()(features_dim, layer_dim))
                 setattr(self, 'f{}'.format(i), layer_dim)
                 if mlp_ln:
@@ -292,11 +291,11 @@ class MLP(nn.Module):
 
         features_dim = mlp_input_dim
         if num_mlp_layers > 0:
-            layer_diff = getLayerDiff(mlp_input_dim, mlp_dim, num_mlp_layers)
+            layer_diff = int((mlp_input_dim - mlp_dim) / num_mlp_layers)
             layer_dim = features_dim - layer_diff
 
             for i in range(num_mlp_layers):
-                if i == num_mlp_layers - 1 or layer_dim<=0: layer_dim = mlp_dim
+                if i == num_mlp_layers - 1: layer_dim = mlp_dim
                 setattr(self, 'l{}'.format(i), Linear()(features_dim, layer_dim))
                 setattr(self, 'f{}'.format(i), layer_dim)
                 if mlp_ln:
@@ -414,10 +413,3 @@ def normalize(mx):
     mx = np.dot(mx, r_mat_inv)
     norm_mx = np.dot(mx.transpose(), r_mat_inv)
     return norm_mx
-
-def getLayerDiff(feature_dim, target_dim, num_layers, MIN_DISS=100):
-    if abs(feature_dim-target_dim) < abs(MIN_DISS):
-        layer_diff = feature_dim - target_dim
-    else:
-        layer_diff = int((feature_dim - target_dim)/num_layers)
-    return layer_diff
