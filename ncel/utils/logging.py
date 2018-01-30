@@ -133,11 +133,11 @@ def print_samples(output, vocabulary, docs, only_one=False):
         [(word_vocab[key], key) for key in word_vocab if key in word_vocab])
 
     sample_sequences = []
-    batch_size, max_candidates, _ = output.shape
+    batch_size, max_candidates = output.shape
     for b in (list(range(batch_size)) if not only_one else [0]):
         doc_token_sequence = []
         doc = docs[b]
-        out_doc = output[b, :, 0]
+        out_doc = output[b, :]
         c_idx = 0
         start = 0
         for mention in doc.mentions:

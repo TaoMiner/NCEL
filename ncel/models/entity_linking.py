@@ -178,7 +178,7 @@ def train_loop(
         # Reset cached gradients.
         trainer.optimizer_zero_grad()
 
-        # Run model. output: batch_size * node_num * 2
+        # Run model. output: batch_size * node_num
         output = model(x, num_candidates, adj=adj)
 
         # Calculate mention accuracy.
@@ -189,22 +189,16 @@ def train_loop(
         batch_size, max_candidates = y.shape
 
         # bce loss mask: batch_size * node_num
-        mask2d = sequence_mask(num_candidates, max_candidates)
-        vmask2d = Variable(mask2d, volatile=True).cuda()
-        # cross loss mask: batch_size * node_num * 2
-        vmask3d = vmask2d.unsqueeze(2).expand(batch_size, max_candidates, 2).cuda()
+        mask2d = Variable(sequence_mask(num_candidates, max_candidates), volatile=True).cuda()
 
-        target = torch.from_numpy(y).float().masked_select(mask2d)
+        target = torch.from_numpy(y).float()
 
         # cross loss t
         # Calculate loss.
-        xent_loss = nn.CrossEntropyLoss()(output.masked_select(vmask3d).view(-1, 2), to_gpu(Variable(target.long().view(-1), volatile=False)))
-        bce_loss = nn.BCELoss()(output[:,:,0].masked_select(vmask2d), to_gpu(Variable(target, volatile=False)))
-        xent_loss += nn.BCELoss()(output[:,:,1].masked_select(vmask2d), to_gpu(Variable(1-target, volatile=False)))
+        loss = nn.BCELoss()(output.masked_select(mask2d), to_gpu(Variable(target, volatile=False).masked_select(mask2d)))
         # for n,p in model.named_parameters():
         #   print('===========\nbefore gradient:{}\n----------\n{}'.format(n, p.grad))
         # Backward pass.
-        loss = bce_loss + trainer.xling * xent_loss
         loss.backward()
         # for n,p in model.named_parameters():
         #     print('===========\nbefore gradient:{}\n----------\n{}'.format(n, p.grad))
@@ -225,7 +219,7 @@ def train_loop(
         A.add('total_time', total_time)
 
         if trainer.step % FLAGS.statistics_interval_steps == 0:
-            A.add('total_cost', xent_loss.data[0])
+            A.add('total_cost', loss.data[0])
             stats(model, trainer, A, log_entry)
             should_log = True
             progress_bar.finish()
