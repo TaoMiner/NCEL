@@ -4,6 +4,7 @@ import os
 import time
 
 import gflags
+import re
 
 from ncel.data import load_conll_data, load_kbp_data, load_wned_data, load_xlwiki_data
 from ncel.utils.data import BuildVocabulary, BuildEntityVocabulary, AddCandidatesToDocs
@@ -79,10 +80,10 @@ def get_feature_manager(embeddings, embedding_dim,
                 global_context_window=global_context_window)
 
 def unwrapDataset(data_tuples):
-    datasets = data_tuples.split(":")
+    datasets = data_tuples.split(",")
     unwraped_data_tuples = []
     for dataset in datasets:
-        items = dataset.split("|")
+        items = dataset.split(":")
         assert len(items)==4, "Error: unmatched data tuples!"
         unwraped_data_tuples.append([item if len(item)>0 else None for item in items])
     return unwraped_data_tuples
@@ -284,16 +285,16 @@ def get_flags():
                           "Update the checkpoint on disk at this interval.")
 
     # Data settings.
-    gflags.DEFINE_string("train_data", None,
-                         "'type|genre|text_path|mention_file'. text_path or mention file may empty."
-                         " use ':' to separate multiple training data.")
+    gflags.DEFINE_string("training_data", None,
+                         "'type:genre:text_path:mention_file'. text_path or mention file may empty."
+                         " use ',' to separate multiple training data.")
     gflags.DEFINE_string("eval_data", None,
-                         "'type|genre|text_path|mention_file', text_path or mention file may empty."
-                         " use ':' to separate multiple eval data.")
+                         "'type:genre:text_path:mention_file', text_path or mention file may empty."
+                         " use ',' to separate multiple eval data.")
 
     gflags.DEFINE_string(
         "candidates_file", None, "Each line contains mention-entities pair, separated by tab. "
-                                 "use ':' to separate multiple eval data.")
+                                 "use ',' to separate multiple eval data.")
     gflags.DEFINE_string(
         "entity_prior_file", None, "line: enti_id tab gobal_prior tab cand_ment::=count tab ...")
     gflags.DEFINE_string("wiki_entity_vocab", None, "line: entity_label \t entity_id")
@@ -433,8 +434,7 @@ def flag_defaults(FLAGS, load_log_flags=False):
 
     if not FLAGS.experiment_name:
         timestamp = str(int(time.time()))
-        FLAGS.experiment_name = "{}-{}-{}".format(
-            FLAGS.data_type,
+        FLAGS.experiment_name = "{}-{}".format(
             FLAGS.model_type,
             timestamp,
         )

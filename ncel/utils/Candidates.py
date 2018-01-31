@@ -7,7 +7,7 @@ DEFAULT_PRIOR = 0.0
 
 class CandidatesHandler:
     def __init__(self, file, vocab=None, lowercase=False):
-        self._files = file.split(':')
+        self._files = file.split(',')
         self._vocab = vocab
         self._mention_dict = None
         self._candidate_entities = None
