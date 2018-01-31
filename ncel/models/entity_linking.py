@@ -200,7 +200,7 @@ def train_loop(
         # Calculate loss.
         xent_loss = nn.CrossEntropyLoss()(output.masked_select(vmask3d).view(-1, 2), to_gpu(Variable(target.long().view(-1), volatile=False)))
         bce_loss = nn.BCELoss()(output[:,:,0].masked_select(vmask2d), to_gpu(Variable(target, volatile=False)))
-        xent_loss += nn.BCELoss()(output[:,:,1].masked_select(vmask2d), to_gpu(Variable(1-target, volatile=False)))
+        bce_loss += nn.BCELoss()(output[:,:,1].masked_select(vmask2d), to_gpu(Variable(1-target, volatile=False)))
         # for n,p in model.named_parameters():
         #   print('===========\nbefore gradient:{}\n----------\n{}'.format(n, p.grad))
         # Backward pass.
@@ -265,15 +265,13 @@ def run(only_forward=False):
         write_proto=FLAGS.write_proto_to_log)
     header = pb.NcelHeader()
 
-    data_manager = get_data_manager(FLAGS.data_type)
-
     candidate_handler = getCandidateHandler()
 
     logger.Log("Flag Values:\n" + json.dumps(FLAGS.FlagValuesDict(), indent=4, sort_keys=True))
 
     # Get Data and Embeddings
     vocabulary, initial_embeddings, training_data_iter, eval_iterators,\
-        training_data_length, feature_dim = load_data_and_embeddings(FLAGS, data_manager, logger, candidate_handler)
+        training_data_length, feature_dim = load_data_and_embeddings(FLAGS, logger, candidate_handler)
 
     word_embeddings, entity_embeddings, sense_embeddings, mu_embeddings = initial_embeddings
 

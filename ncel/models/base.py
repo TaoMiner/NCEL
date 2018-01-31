@@ -68,7 +68,6 @@ def get_feature_manager(embeddings, embedding_dim,
 
 def load_data_and_embeddings(
         FLAGS,
-        data_manager,
         logger,
         candidate_manager):
 
@@ -84,34 +83,31 @@ def load_data_and_embeddings(
     # must cross_validation
     # wned only one eval [path, file]
     raw_training_data = None
-    if not FLAGS.eval_only_mode and FLAGS.cross_validation <= 0 :
-        if FLAGS.data_type in ["kbp10", "kbp15", "kbp16"]:
-            raw_training_data = []
-            text_paths = FLAGS.training_text_path.split(':')
-            mention_files = FLAGS.training_mention_file.split(':')
-            assert len(text_paths) == len(mention_files), "Error training data path!"
+    if not FLAGS.eval_only_mode and FLAGS.cross_validation <= 0:
+        raw_training_data = []
+        tr_data_types = FLAGS.train_data_type.split(':')
+        text_paths = FLAGS.training_text_path.split(':')
+        mention_files = FLAGS.training_mention_file.split(':')
 
-            for i, path in enumerate(text_paths):
-                raw_training_data.extend(data_manager.load_data(
-                    text_path=path, mention_file=mention_files[i],
-                    kbp_id2wikiid_file=FLAGS.kbp2wikiId_file,
-                    include_unresolved=FLAGS.include_unresolved, lowercase=FLAGS.lowercase,
-                    wiki_entity_file=FLAGS.wiki_entity_vocab))
-        else:
-            genre = 2 if FLAGS.data_type == "conll" else FLAGS.genre
-            raw_training_data = data_manager.load_data(
-                text_path=FLAGS.training_text_path, mention_file=FLAGS.training_mention_file,
-                genre=genre, include_unresolved=FLAGS.include_unresolved, lowercase=FLAGS.lowercase)
+        for i, tr_type in tr_data_types:
+            data_manager = get_data_manager(tr_type)
+            genre = 2 if tr_type == "conll" else FLAGS.genre
+            raw_training_data.extend(data_manager.load_data(
+                text_path=text_paths[i], mention_file=mention_files[i],
+                kbp_id2wikiid_file=FLAGS.kbp2wikiId_file, genre=genre,
+                include_unresolved=FLAGS.include_unresolved, lowercase=FLAGS.lowercase,
+                wiki_entity_file=FLAGS.wiki_entity_vocab))
 
     raw_eval_sets = []
-    if FLAGS.data_type == "conll":
+    data_manager = get_data_manager(FLAGS.eval_data_type)
+    if FLAGS.eval_data_type == "conll":
         genre = [0, 1, 2] if FLAGS.genre == 2 else ([0, 1] if FLAGS.genre == 1 else [1, 0])
         for i in genre:
             raw_eval_sets.append(data_manager.load_data(
                 mention_file=FLAGS.training_mention_file, genre=i,
                 include_unresolved=FLAGS.include_unresolved,
                 lowercase=FLAGS.lowercase))
-    elif FLAGS.data_type == "xlwiki":
+    elif FLAGS.eval_data_type == "xlwiki":
         raw_eval_sets.append(data_manager.load_data(
             text_path=FLAGS.eval_text_path, genre=FLAGS.genre,
             include_unresolved=FLAGS.include_unresolved, lowercase=FLAGS.lowercase,
@@ -285,6 +281,8 @@ def get_flags():
                           "Update the checkpoint on disk at this interval.")
 
     # Data types.
+    gflags.DEFINE_string("train_data_type", "conll", "use ':' to separate multiple training data.")
+    gflags.DEFINE_string("eval_data_type", "conll", "use ':' to separate multiple eval data.")
     gflags.DEFINE_enum("data_type",
                        "conll",
                        ["conll",
