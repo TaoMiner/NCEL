@@ -2,7 +2,7 @@
 import os
 from ncel.utils.document import *
 import re
-from ncel.utils.data import loadWikiVocab
+from ncel.utils.misc import loadWikiVocab
 
 def _xlwikiFileToDocIterator(fpath):
     files = os.listdir(fpath)

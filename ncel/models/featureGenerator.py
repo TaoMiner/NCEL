@@ -7,7 +7,7 @@ class FeatureGenerator:
     def __init__(self, initial_embeddings, embedding_dim,
                  str_sim=True, prior=True, hasAtt=True,
                  local_context_window=5, global_context_window=5,
-                 use_mu=True, use_embeddings=False):
+                 use_mu=True, use_embeddings=True):
         self._has_str_sim = str_sim
         self._has_prior = prior
         self._local_window = local_context_window
@@ -27,7 +27,8 @@ class FeatureGenerator:
     def AddEmbeddingFeatures(self, dataset):
         for i, doc in enumerate(dataset):
             for j, mention in enumerate(doc.mentions):
-                self.AddMentionEmbeddingFeatures(dataset[i].mentions[j])
+                if mention._is_trainable:
+                    self.AddMentionEmbeddingFeatures(dataset[i].mentions[j])
 
     def AddMentionEmbeddingFeatures(self, mention):
         lc_emb = None
@@ -50,7 +51,7 @@ class FeatureGenerator:
             if len(left_s) > 0: ls_emb = self.docEmbed(left_s)
             if len(right_s) > 0: rs_emb = self.docEmbed(right_s)
 
-        for i, candidate in enumerate(mention):
+        for i, candidate in enumerate(mention.candidates):
             self.AddCandidateEmbeddingFeatures(mention.candidates[i], lc_emb, rc_emb, ls_emb, rs_emb)
             mention.candidates[i].setContextSimilarity()
 
@@ -58,25 +59,26 @@ class FeatureGenerator:
                              left_sent_embeddings, right_sent_embeddings):
         cand_emb = self.sense_embeddings[candidate.id]
         candidate.setSenseEmbeddings(cand_emb)
-        candidate.setLeftContextEmbeddings(self.getFeatureEmbeddings(cand_emb, left_context_embeddings))
-        candidate.setRightContextEmbeddings(self.getFeatureEmbeddings(cand_emb, right_context_embeddings))
-        candidate.setLeftSentEmbeddings(self.getFeatureEmbeddings(cand_emb, left_sent_embeddings))
-        candidate.setRightSentEmbeddings(self.getFeatureEmbeddings(cand_emb, right_sent_embeddings))
+
+        candidate.setLeftContextEmbeddings(self.getFeatureEmbeddings(cand_emb, left_context_embeddings), False)
+        candidate.setRightContextEmbeddings(self.getFeatureEmbeddings(cand_emb, right_context_embeddings), False)
+        candidate.setLeftSentEmbeddings(self.getFeatureEmbeddings(cand_emb, left_sent_embeddings), False)
+        candidate.setRightSentEmbeddings(self.getFeatureEmbeddings(cand_emb, right_sent_embeddings), False)
 
         if self._use_mu:
             cand_mu_emb = self.mu_embeddings[candidate.id]
             candidate.setSenseMuEmbeddings(cand_mu_emb)
-            candidate.setLeftContextMuEmbeddings(self.getFeatureEmbeddings(cand_emb, left_context_embeddings))
-            candidate.setRightContextMuEmbeddings(self.getFeatureEmbeddings(cand_emb, right_context_embeddings))
-            candidate.setLeftSentMuEmbeddings(self.getFeatureEmbeddings(cand_emb, left_sent_embeddings))
-            candidate.setRightSentMuEmbeddings(self.getFeatureEmbeddings(cand_emb, right_sent_embeddings))
+            candidate.setLeftContextEmbeddings(self.getFeatureEmbeddings(cand_emb, left_context_embeddings), True)
+            candidate.setRightContextEmbeddings(self.getFeatureEmbeddings(cand_emb, right_context_embeddings), True)
+            candidate.setLeftSentEmbeddings(self.getFeatureEmbeddings(cand_emb, left_sent_embeddings), True)
+            candidate.setRightSentEmbeddings(self.getFeatureEmbeddings(cand_emb, right_sent_embeddings), True)
 
     def getFeatureEmbeddings(self, query_emb, embeddings):
         if embeddings is not None:
             lc_emb = self.getSeqEmbeddings(embeddings, query_emb=query_emb) if \
                 self._has_att else self.getSeqEmbeddings(embeddings)
         else:
-            lc_emb = None
+            lc_emb = np.zeros(self._dim)
         return lc_emb
 
     def getFeatureDim(self):
@@ -107,7 +109,7 @@ class FeatureGenerator:
     def getCandidateBaseFeature(self, candidate, num_candidates, max_prior):
         # base feature_num
         features = []
-        m_label = candidate.mention
+        m_label = candidate.getMentionText()
         # number of candidates
         features.append(num_candidates)
         # max_prior
@@ -115,7 +117,7 @@ class FeatureGenerator:
 
         # string similarity features
         if self._has_str_sim:
-            c_label = candidate.str
+            c_label = candidate.label
             # mention_text_starts_or_ends_with_entity
             x = 1 if not isinstance(c_label, type(None)) and len(c_label) > 0 and (
                 c_label.lower().startswith(m_label.lower()) or c_label.lower().endswith(

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from ncel.utils.document import *
 from ncel.utils.xmlProcessor import *
-from ncel.utils.data import loadWikiVocab
+from ncel.utils.misc import loadWikiVocab
 import os
 import re
 

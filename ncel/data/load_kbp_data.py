@@ -3,7 +3,7 @@ from ncel.utils.document import *
 from ncel.utils.xmlProcessor import *
 import os
 import re
-from ncel.utils.data import loadWikiVocab
+from ncel.utils.misc import loadWikiVocab
 
 def _KbpFileToDocIterator(fpath):
     files = os.listdir(fpath)

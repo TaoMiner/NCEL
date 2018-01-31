@@ -5,11 +5,10 @@ import random
 import time
 import sys
 import struct
-import re
 
 import numpy as np
 from ncel.utils.layers import buildGraph
-from ncel.utils.Candidates import resortCandidates, Candidate
+from ncel.utils.Candidates import resortCandidates
 
 PADDING_TOKEN = "_PAD"
 # UNK must be existed in pre-trained embeddings
@@ -18,19 +17,6 @@ UNK_TOKEN = "_"
 CORE_VOCABULARY = {PADDING_TOKEN: 0}
 
 PADDING_ID = CORE_VOCABULARY[PADDING_TOKEN]
-
-# wiki_id \t wiki_label
-def loadWikiVocab(filename, id_vocab=None):
-    label2id_map = {}
-    id2label_map = {}
-    with open(filename, 'r', encoding='UTF-8') as fin:
-        for line in fin:
-            items = re.split(r'\t', line.strip())
-            if len(items) < 2 or len(items[0].strip()) < 1 or len(items[1].strip()) < 1 or\
-                    (not isinstance(id_vocab, type(None)) and items[0] not in id_vocab): continue
-            label2id_map[items[1]] = items[0]
-            id2label_map[items[0]] = items[1]
-    return label2id_map, id2label_map
 
 class SimpleProgressBar(object):
     """ Simple Progress Bar and Timing Snippet
@@ -381,10 +367,11 @@ def CropMentionAndCandidates(dataset, max_candidates, topn=0, allow_cropping=Tru
                 if cand_len > topn:
                     dataset[i].mentions[j].candidates = resortCandidates(ment.candidates)[:topn]
                     dataset[i].n_candidates -= (cand_len-topn)
+    raw_doc_num = len(dataset)
     # over mention-candidate_pairs size that may be cropped
     cropped_dataset = [doc for doc in dataset if doc.n_candidates <= max_candidates]
 
-    diff_doc = len(dataset) - len(cropped_dataset)
+    diff_doc = raw_doc_num - len(cropped_dataset)
 
     if not allow_cropping:
         if logger and diff_doc > 0:
@@ -420,15 +407,16 @@ def CropMentionAndCandidates(dataset, max_candidates, topn=0, allow_cropping=Tru
                     diff -= tmp_clen
                     dataset[i].n_candidates -= tmp_clen
 
-        logger.Log("Actual cropped {} mentions of {} documents! "
-                   "Remove {} empty docs!".format(cropped_m, cropped_d, len(dataset) - len(cropped_dataset)))
+        logger.Log("Actual cropped {} mentions of {} documents! ")
 
+    dataset = [doc for doc in dataset if doc.n_candidates > 0]
     for i, doc in enumerate(dataset):
         # filter out cannot trainable mentions
         dataset[i].mentions = [mention for mention in doc.mentions if mention._is_trainable]
-    cropped_dataset = [doc for doc in dataset if doc.n_candidates > 0]
 
-    return cropped_dataset
+    logger.Log("Remove {} docs!".format(raw_doc_num - len(dataset)))
+
+    return dataset
 
 # adj : node * node
 def PadDocument(

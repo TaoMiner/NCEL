@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 import re
-from ncel.utils.data import loadWikiVocab
 from ncel.utils.layers import cosSim
+from ncel.utils.misc import loadWikiVocab
 
 DEFAULT_PRIOR = 0.0
-
 
 class CandidatesHandler:
     def __init__(self, file, vocab=None, lowercase=False):
@@ -46,7 +45,9 @@ class CandidatesHandler:
                 if not isinstance(self._vocab, type(None)) and ment_name not in self._vocab: continue
                 for c in items[1:]:
                     self._candidate_entities.add(c)
-                    self._mention_dict.get(ment_name, set()).add(c)
+                    m_cand_set = self._mention_dict.get(ment_name, set())
+                    m_cand_set.add(c)
+                    self._mention_dict[ment_name] = m_cand_set
         self._candidates_total = sum([len(self._mention_dict[m]) for m in self._mention_dict])
 
     # load all candidates prior
@@ -86,10 +87,10 @@ class CandidatesHandler:
     # order entity by prior
     def sort_candidates_by_prior(self, candidates):
         for i, cand in enumerate(candidates):
-            m_count = self._prior_mention_count[cand.mention_text] if cand.mention_text in self._prior_mention_count else 0
+            m_count = self._prior_mention_count[cand.getMentionText()] if cand.getMentionText() in self._prior_mention_count else 0
 
-            me_count = self._prior_mention_dict[cand.mention_text][cand.id] if cand.mention_text in self._prior_mention_dict \
-                            and cand.id in self._prior_mention_dict[cand.mention_text] else 0
+            me_count = self._prior_mention_dict[cand.getMentionText()][cand.id] if cand.getMentionText() in self._prior_mention_dict \
+                            and cand.id in self._prior_mention_dict[cand.getMentionText()] else 0
             pem = m_count / float(me_count) if m_count > 0 and me_count > 0 else DEFAULT_PRIOR
 
             candidates[i].setEntityMentionPrior(pem)
@@ -116,7 +117,7 @@ class CandidatesHandler:
         return candidates
 
     def add_candidates_to_mention(self, mention, vocab=None, is_eval=False, topn=0):
-        mention.candidates = self.get_candidates_for_mention(mention._mention_str,
+        mention.candidates = self.get_candidates_for_mention(mention,
                                                              vocab=vocab, is_eval=is_eval, topn=topn)
         # set candidate labels
         is_NIL = True if isinstance(mention.gold_ent_id(), type(None)) else False
@@ -155,6 +156,9 @@ class Candidate():
         self._context_emb = [None] * 4
         self._context_mu_emb = [None] * 4
 
+    def getMentionText(self):
+        return self._mention._mention_str
+
     def setContextSimilarity(self):
         if self._sense_emb is not None:
             for i in range(len(self._sense_context_sim)):
@@ -171,29 +175,29 @@ class Candidate():
     def setSenseMuEmbeddings(self, emb):
         self._sense_mu_emb = emb
 
-    def setLeftMuContextEmbeddings(self, emb):
-        self._context_mu_emb[0] = emb
+    def setLeftContextEmbeddings(self, emb, is_mu):
+        if is_mu:
+            self._context_mu_emb[0] = emb
+        else:
+            self._context_emb[0] = emb
 
-    def setRightMuContextEmbeddings(self, emb):
-        self._context_mu_emb[1] = emb
+    def setRightContextEmbeddings(self, emb, is_mu):
+        if is_mu:
+            self._context_mu_emb[1] = emb
+        else:
+            self._context_emb[1] = emb
 
-    def setLeftMuSentEmbeddings(self, emb):
-        self._context_mu_emb[2] = emb
+    def setLeftSentEmbeddings(self, emb, is_mu):
+        if is_mu:
+            self._context_mu_emb[2] = emb
+        else:
+            self._context_emb[2] = emb
 
-    def setRightMuSentEmbeddings(self, emb):
-        self._context_mu_emb[3] = emb
-
-    def setLeftContextEmbeddings(self, emb):
-        self._context_emb[0] = emb
-
-    def setRightContextEmbeddings(self, emb):
-        self._context_emb[1] = emb
-
-    def setLeftSentEmbeddings(self, emb):
-        self._context_emb[2] = emb
-
-    def setRightSentEmbeddings(self, emb):
-        self._context_emb[3] = emb
+    def setRightSentEmbeddings(self, emb, is_mu):
+        if is_mu:
+            self._context_mu_emb[3] = emb
+        else:
+            self._context_emb[3] = emb
 
     def getMention(self):
         return self._mention
@@ -239,6 +243,8 @@ class Candidate():
 
     def getMuSentEmb(self):
         return self._context_mu_emb[2:]
+
+
 
 # candidates is a list
 def resortCandidates(candidates):

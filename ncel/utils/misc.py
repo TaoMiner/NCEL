@@ -3,6 +3,7 @@ import numpy as np
 from collections import deque
 import json
 from functools import reduce
+import re
 
 def flatten(l):
     if hasattr(l, '__len__'):
@@ -95,6 +96,19 @@ def ComputeMentionAccuracy(output, y, docs, NIL_thred=0.1):
         total_mention_correct += dm_correct
         doc_acc += dm_correct/float(len(doc.mentions))
     return total_candidates, total_candidates_correct, total_mentions, total_mention_correct, batch_docs, doc_acc/float(batch_docs)
+
+# wiki_id \t wiki_label
+def loadWikiVocab(filename, id_vocab=None):
+    label2id_map = {}
+    id2label_map = {}
+    with open(filename, 'r', encoding='UTF-8') as fin:
+        for line in fin:
+            items = re.split(r'\t', line.strip())
+            if len(items) < 2 or len(items[0].strip()) < 1 or len(items[1].strip()) < 1 or\
+                    (not isinstance(id_vocab, type(None)) and items[0] not in id_vocab): continue
+            label2id_map[items[1]] = items[0]
+            id2label_map[items[0]] = items[1]
+    return label2id_map, id2label_map
 
 def inspectDoc(doc, word_vocab=None):
     if not isinstance(word_vocab, type(None)):

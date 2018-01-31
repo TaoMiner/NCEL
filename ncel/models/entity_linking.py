@@ -287,7 +287,6 @@ def run(only_forward=False):
 
     # Do an evaluation-only run.
     logger.LogHeader(header)  # Start log_entry logging.
-    total_loops = FLAGS.cross_validation + 2 if FLAGS.cross_validation > 0 else 1
 
     if only_forward:
         log_entry = pb.NcelEntry()
