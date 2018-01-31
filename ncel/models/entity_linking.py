@@ -233,6 +233,7 @@ def train_loop(
         if trainer.step > 0 and trainer.step % FLAGS.eval_interval_steps == 0:
             should_log = True
             # note: at most tow eval set due to training recording best
+            test_acc = None
             for index, eval_set in enumerate(eval_iterators):
                 acc = evaluate(
                     FLAGS, model, eval_set, log_entry, logger, show_sample=False, vocabulary=vocabulary, eval_index=index)

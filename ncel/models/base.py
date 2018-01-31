@@ -20,6 +20,18 @@ import torch
 
 FLAGS = gflags.FLAGS
 
+DATA_TYPE = ["conll",
+            "kbp10",
+            "kbp15",
+            "kbp16",
+            "xlwiki",   # Cross-lingual Wikification Using Multilingual Embeddings
+            # Robust Named Entity Disambiguation with RandomWalks
+            "msnbc",
+            "aquaint",
+            "ace04",
+            "wiki13",
+            "clueweb12"]
+
 def log_path(FLAGS, load=False):
     lp = FLAGS.load_log_path if load else FLAGS.log_path
     en = FLAGS.load_experiment_name if load else FLAGS.experiment_name
@@ -66,6 +78,24 @@ def get_feature_manager(embeddings, embedding_dim,
                  local_context_window=local_context_window,
                 global_context_window=global_context_window)
 
+def unwrapDataset(data_tuples):
+    datasets = data_tuples.split(":")
+    unwraped_data_tuples = []
+    for dataset in datasets:
+        items = dataset.split("|")
+        assert len(items)==4, "Error: unmatched data tuples!"
+        unwraped_data_tuples.append([item if len(item)>0 else None for item in items])
+    return unwraped_data_tuples
+
+def extractRawData(data_type, text_path, mention_file, genre, FLAGS):
+    assert data_type in DATA_TYPE, "Wrong input data types!"
+    data_manager = get_data_manager(data_type)
+    raw_data = data_manager.load_data(text_path=text_path, mention_file=mention_file,
+                kbp_id2wikiid_file=FLAGS.kbp2wikiId_file, genre=genre,
+                include_unresolved=FLAGS.include_unresolved, lowercase=FLAGS.lowercase,
+                wiki_entity_file=FLAGS.wiki_entity_vocab)
+    return raw_data
+
 def load_data_and_embeddings(
         FLAGS,
         logger,
@@ -85,44 +115,17 @@ def load_data_and_embeddings(
     raw_training_data = None
     if not FLAGS.eval_only_mode and FLAGS.cross_validation <= 0:
         raw_training_data = []
-        tr_data_types = FLAGS.train_data_type.split(':')
-        text_paths = FLAGS.training_text_path.split(':')
-        mention_files = FLAGS.training_mention_file.split(':')
+        unwraped_data_tuples = unwrapDataset(FLAGS.training_data)
+        for data_tuple in unwraped_data_tuples:
+            raw_training_data.extend(extractRawData(data_tuple[0],
+                      data_tuple[2], data_tuple[3], data_tuple[1], FLAGS))
 
-        for i, tr_type in tr_data_types:
-            data_manager = get_data_manager(tr_type)
-            genre = 2 if tr_type == "conll" else FLAGS.genre
-            raw_training_data.extend(data_manager.load_data(
-                text_path=text_paths[i], mention_file=mention_files[i],
-                kbp_id2wikiid_file=FLAGS.kbp2wikiId_file, genre=genre,
-                include_unresolved=FLAGS.include_unresolved, lowercase=FLAGS.lowercase,
-                wiki_entity_file=FLAGS.wiki_entity_vocab))
 
     raw_eval_sets = []
-    data_manager = get_data_manager(FLAGS.eval_data_type)
-    if FLAGS.eval_data_type == "conll":
-        genre = [0, 1, 2] if FLAGS.genre == 2 else ([0, 1] if FLAGS.genre == 1 else [1, 0])
-        for i in genre:
-            raw_eval_sets.append(data_manager.load_data(
-                mention_file=FLAGS.training_mention_file, genre=i,
-                include_unresolved=FLAGS.include_unresolved,
-                lowercase=FLAGS.lowercase))
-    elif FLAGS.eval_data_type == "xlwiki":
-        raw_eval_sets.append(data_manager.load_data(
-            text_path=FLAGS.eval_text_path, genre=FLAGS.genre,
-            include_unresolved=FLAGS.include_unresolved, lowercase=FLAGS.lowercase,
-            wiki_entity_file=FLAGS.wiki_entity_vocab))
-    else:
-        text_paths = FLAGS.eval_text_path.split(':')
-        mention_files = FLAGS.eval_mention_file.split(':')
-        assert len(text_paths) == len(mention_files), "Error eval data path!"
-
-        for i, path in enumerate(text_paths):
-            raw_eval_sets.append(data_manager.load_data(
-                text_path=path, mention_file=mention_files[i],
-                kbp_id2wikiid_file=FLAGS.kbp2wikiId_file,
-                include_unresolved=FLAGS.include_unresolved, lowercase=FLAGS.lowercase,
-                wiki_entity_file=FLAGS.wiki_entity_vocab))
+    unwraped_data_tuples = unwrapDataset(FLAGS.eval_data)
+    for data_tuple in unwraped_data_tuples:
+        raw_eval_sets.append(extractRawData(data_tuple[0],
+                   data_tuple[2], data_tuple[3], data_tuple[1], FLAGS))
 
     # Prepare the word and mention vocabulary.
     word_vocab, mention_vocab = BuildVocabulary(
@@ -132,7 +135,7 @@ def load_data_and_embeddings(
         logger=logger)
 
     candidate_handler = candidate_manager(FLAGS.candidates_file, vocab=mention_vocab, lowercase=FLAGS.lowercase)
-    candidate_handler.loadCandiates()
+    candidate_handler.loadCandidates()
     logger.Log("Load "+ str(candidate_handler._candidates_total) + " candidates for "
                + str(len(candidate_handler._mention_dict)) + " mention types!")
     candidate_handler.loadPrior(FLAGS.entity_prior_file)
@@ -280,38 +283,17 @@ def get_flags():
     gflags.DEFINE_integer("ckpt_interval_steps", 5000,
                           "Update the checkpoint on disk at this interval.")
 
-    # Data types.
-    gflags.DEFINE_string("train_data_type", "conll", "use ':' to separate multiple training data.")
-    gflags.DEFINE_string("eval_data_type", "conll", "use ':' to separate multiple eval data.")
-    gflags.DEFINE_enum("data_type",
-                       "conll",
-                       ["conll",
-                        "kbp10",
-                        "kbp15",
-                        "kbp16",
-                        "xlwiki",   # Cross-lingual Wikification Using Multilingual Embeddings
-                        # Robust Named Entity Disambiguation with RandomWalks
-                        "msnbc",
-                        "aquaint",
-                        "ace04",
-                        "wiki13",
-                        "clueweb12"],
-                       "el datasets.")
-
     # Data settings.
-    gflags.DEFINE_string("training_text_path", None, "Can contain multiple file paths, separated "
-                                "using ':' tokens.")
-    gflags.DEFINE_string("training_mention_file", None, "Can contain multiple file paths according "
-                                                        "to training_text_path, separated using ':' tokens.")
+    gflags.DEFINE_string("train_data", None,
+                         "'type|genre|text_path|mention_file'. text_path or mention file may empty."
+                         " use ':' to separate multiple training data.")
+    gflags.DEFINE_string("eval_data", None,
+                         "'type|genre|text_path|mention_file', text_path or mention file may empty."
+                         " use ':' to separate multiple eval data.")
+
     gflags.DEFINE_string(
-        "eval_text_path", None, "Can contain multiple file paths, separated "
-                                "using ':' tokens. The first file should be the dev set, and is used for determining "
-                                "when to save the early stopping 'best' checkpoints.")
-    gflags.DEFINE_string(
-        "eval_mention_file", None, "Can contain multiple files according to eval_text_path, separated "
-                                "using ':' tokens.")
-    gflags.DEFINE_string(
-        "candidates_file", None, "Each line contains mention-entities pair, separated by tab.")
+        "candidates_file", None, "Each line contains mention-entities pair, separated by tab. "
+                                 "use ':' to separate multiple eval data.")
     gflags.DEFINE_string(
         "entity_prior_file", None, "line: enti_id tab gobal_prior tab cand_ment::=count tab ...")
     gflags.DEFINE_string("wiki_entity_vocab", None, "line: entity_label \t entity_id")

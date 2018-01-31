@@ -7,7 +7,7 @@ DEFAULT_PRIOR = 0.0
 
 class CandidatesHandler:
     def __init__(self, file, vocab=None, lowercase=False):
-        self._file = file
+        self._files = file.split(':')
         self._vocab = vocab
         self._mention_dict = None
         self._candidate_entities = None
@@ -23,11 +23,15 @@ class CandidatesHandler:
         _, self._wikiid2label = loadWikiVocab(filename, id_vocab=id_vocab)
         return self._wikiid2label
 
-    def loadCandiates(self):
+    def loadCandidates(self):
+        for f in self._files:
+            self.loadCandidatesFile(f)
+
+    def loadCandidatesFile(self, filename):
         if isinstance(self._mention_dict, type(None)) : self._mention_dict = {}
         if isinstance(self._candidate_entities, type(None)) : self._candidate_entities = {}
 
-        with open(self._file, 'r', encoding='UTF-8') as fin:
+        with open(filename, 'r', encoding='UTF-8') as fin:
             for line in fin:
                 if self._lowercase : line = line.lower()
                 items = re.split(r'\t', line.strip())
@@ -46,7 +50,7 @@ class CandidatesHandler:
     # enti_id \t gobal_prior \t cand_ment::=count \t ...
     def loadPrior(self, prior_file):
         if isinstance(self._mention_dict, type(None)) :
-            self.loadCandiates()
+            self.loadCandidates()
         with open(prior_file, 'r', encoding='UTF-8') as fin:
             total_anchor_num = 0
             for line in fin:
@@ -73,7 +77,7 @@ class CandidatesHandler:
     # return an ordered candidates list
     def get_candidates_for_mention(self, mention_str, vocab=None, topn=None):
         if isinstance(self._mention_dict, type(None)) :
-            self.loadCandiates()
+            self.loadCandidates()
         candidates = self._mention_dict.get(mention_str, {})
         # trim candidate sets by vocab and topn
         tmp_candidates = []
