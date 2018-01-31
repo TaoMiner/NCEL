@@ -78,13 +78,13 @@ def ComputeMentionAccuracy(output, y, docs, NIL_thred=0.1):
     for i, doc in enumerate(docs):
         dm_correct = 0
         total_mentions += len(doc.mentions)
-        out_doc = output[i,:,:]
+        out_doc = output[i, :, :]
         y_doc = y[i,:]
         mc_start = 0
         for j, mention in enumerate(doc.mentions):
             total_candidates += len(mention.candidates)
             mc_end = mc_start + len(mention.candidates)
-            output_slice = out_doc[mc_start:mc_end,0]
+            output_slice = out_doc[mc_start:mc_end, 0]
             pred = np.argmax(output_slice)
             pred_prob = output_slice[pred]
             y_slice = y_doc[mc_start:mc_end]
