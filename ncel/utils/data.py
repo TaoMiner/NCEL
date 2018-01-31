@@ -407,7 +407,7 @@ def CropMentionAndCandidates(dataset, max_candidates, topn=0, allow_cropping=Tru
                     diff -= tmp_clen
                     dataset[i].n_candidates -= tmp_clen
 
-        logger.Log("Actual cropped {} mentions of {} documents! ")
+        logger.Log("Actual cropped {} mentions of {} documents! ".format(cropped_m, cropped_d))
 
     dataset = [doc for doc in dataset if doc.n_candidates > 0]
     for i, doc in enumerate(dataset):

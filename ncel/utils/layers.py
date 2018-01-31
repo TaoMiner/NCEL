@@ -39,7 +39,6 @@ class LayerNormalization(nn.Module):
         ln_out = ln_out * self.a2 + self.b2
         return ln_out
 
-MIN_DISS = 2
 class GraphConvolutionNetwork(Module):
     def __init__(self, input_dim, hidden_dim, gc_ln=False, bias=True,
             num_layers=1, dropout=0.0, res_gc_layer_num=0):
@@ -54,23 +53,15 @@ class GraphConvolutionNetwork(Module):
             self.ln_inp = LayerNormalization(input_dim)
 
         features_dim = input_dim
-        layer_diff = int((input_dim - hidden_dim)/num_layers)
-        if layer_diff<MIN_DISS:layer_diff = MIN_DISS
-        layer_dim = features_dim - layer_diff
 
         for i in range(num_layers):
-            if i == num_layers - 1 or layer_dim<=0 : layer_dim = hidden_dim
-            if res_gc_layer_num <=0:
-                setattr(self, 'l{}'.format(i), GraphConvolution(features_dim, layer_dim, bias=bias))
-            else:
-                setattr(self, 'l{}'.format(i), ResGraphConvolution(
-                                                features_dim, layer_dim, gc_ln=gc_ln, bias=bias,
-                                                num_layers=res_gc_layer_num, dropout=dropout))
-            setattr(self, 'f{}'.format(i), layer_dim)
+            setattr(self, 'l{}'.format(i), ResGraphConvolution(
+                                            features_dim, hidden_dim, gc_ln=gc_ln, bias=bias,
+                                            num_layers=res_gc_layer_num, dropout=dropout))
+            setattr(self, 'f{}'.format(i), hidden_dim)
             if self.gc_ln:
-                setattr(self, 'ln{}'.format(i), LayerNormalization(layer_dim))
-            features_dim = layer_dim
-            layer_dim -= layer_diff
+                setattr(self, 'ln{}'.format(i), LayerNormalization(hidden_dim))
+            features_dim = hidden_dim
 
     def forward(self, input, adj, mask=None):
         batch_size, node_num, feature_dim = input.size()
@@ -97,6 +88,7 @@ class GraphConvolutionNetwork(Module):
             layer = getattr(self, 'l{}'.format(i))
             layer.reset_parameters()
 
+MIN_DISS = 100
 class ResGraphConvolution(Module):
     """
         n GCN layer with residual unit
@@ -114,8 +106,8 @@ class ResGraphConvolution(Module):
             self.ln_inp = LayerNormalization(input_dim)
 
         features_dim = input_dim
-        layer_diff = int((input_dim - hidden_dim)/num_layers)
-        if layer_diff<MIN_DISS:layer_diff = MIN_DISS
+        layer_diff = int(input_dim - hidden_dim)
+        if layer_diff > MIN_DISS: layer_diff = MIN_DISS
         layer_dim = features_dim - layer_diff
 
         for i in range(num_layers):

@@ -4,9 +4,8 @@ import os
 import time
 
 import gflags
-import re
 
-from ncel.data import load_conll_data, load_kbp_data, load_wned_data, load_xlwiki_data
+from ncel.data import load_conll_data, load_kbp_data, load_wned_data, load_xlwiki_data, load_ncel_data
 from ncel.utils.data import BuildVocabulary, BuildEntityVocabulary, AddCandidatesToDocs
 from ncel.utils.data import PreprocessDataset, LoadEmbeddingsFromBinary
 from ncel.utils.data import MakeEvalIterator, MakeTrainingIterator, MakeCrossIterator
@@ -31,7 +30,8 @@ DATA_TYPE = ["conll",
             "aquaint",
             "ace04",
             "wiki13",
-            "clueweb12"]
+            "clueweb12",
+             "ncelwiki"]
 
 def log_path(FLAGS, load=False):
     lp = FLAGS.load_log_path if load else FLAGS.log_path
@@ -65,6 +65,8 @@ def get_data_manager(data_type):
         data_manager = load_wned_data
     elif data_type == "xlwiki":
         data_manager = load_xlwiki_data
+    elif data_type == "ncelwiki":
+        data_manager = load_ncel_data
     else:
         raise NotImplementedError
 
