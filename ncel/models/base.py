@@ -84,8 +84,12 @@ def unwrapDataset(data_tuples):
     unwraped_data_tuples = []
     for dataset in datasets:
         items = dataset.split(":")
-        assert len(items)==4, "Error: unmatched data tuples!"
-        unwraped_data_tuples.append([item if len(item)>0 else None for item in items])
+        assert len(items)==4 and len(items[0])>0, "Error: unmatched data tuples!"
+        data_type = items[0]
+        genre = int(items[1]) if len(items[1])>0 else None
+        text_path = items[2] if len(items[2]) > 0 else None
+        mention_file = items[3] if len(items[3]) > 0 else None
+        unwraped_data_tuples.append([data_type, genre, text_path, mention_file])
     return unwraped_data_tuples
 
 def extractRawData(data_type, text_path, mention_file, genre, FLAGS):
@@ -114,7 +118,7 @@ def load_data_and_embeddings(
     # must cross_validation
     # wned only one eval [path, file]
     raw_training_data = None
-    if not FLAGS.eval_only_mode and FLAGS.cross_validation <= 0:
+    if not FLAGS.eval_only_mode:
         raw_training_data = []
         unwraped_data_tuples = unwrapDataset(FLAGS.training_data)
         for data_tuple in unwraped_data_tuples:
@@ -137,8 +141,12 @@ def load_data_and_embeddings(
 
     candidate_handler = candidate_manager(FLAGS.candidates_file, vocab=mention_vocab, lowercase=FLAGS.lowercase)
     candidate_handler.loadCandidates()
-    logger.Log("Load "+ str(candidate_handler._candidates_total) + " candidates for "
-               + str(len(candidate_handler._mention_dict)) + " mention types!")
+
+    logger.Log("Unk mention types rate: {:2.6f}% ({}/{}), average candidates: {:2.6f}% ({}/{}) from {}!".format(
+        (len(mention_vocab)-len(candidate_handler._mention_dict))*100/float(len(mention_vocab)),
+         len(candidate_handler._mention_dict), len(mention_vocab), candidate_handler._candidates_total/float(len(candidate_handler._mention_dict)),
+         candidate_handler._candidates_total, len(candidate_handler._mention_dict), FLAGS.candidates_file))
+
     candidate_handler.loadPrior(FLAGS.entity_prior_file)
     id2wiki_vocab = candidate_handler.loadWikiid2Label(FLAGS.wiki_entity_vocab,
                                        id_vocab=candidate_handler._candidate_entities)
@@ -169,8 +177,6 @@ def load_data_and_embeddings(
                  str_sim=FLAGS.str_sim, prior=FLAGS.prior, hasAtt=FLAGS.att,
                  local_context_window=FLAGS.local_context_window,
                   global_context_window=FLAGS.global_context_window)
-    # update mention candidates
-    topn_candidates = FLAGS.topn_candidate if FLAGS.topn_candidate > 0 else None
 
     # Trim dataset, convert token sequences to integer sequences, crop, and
     # pad. construct data iterator
@@ -179,8 +185,8 @@ def load_data_and_embeddings(
     for i, raw_eval_data in enumerate(raw_eval_sets):
         logger.Log("Processing {} raw eval data ...".format(i))
         AddCandidatesToDocs(raw_eval_sets[i], candidate_handler,
-                            vocab=entity_vocab, topn=topn_candidates,
-                            include_unresolved=FLAGS.include_unresolved, logger=logger)
+                            vocab=entity_vocab, is_eval=True, logger=logger,
+                            include_unresolved=FLAGS.include_unresolved)
         eval_data = PreprocessDataset(raw_eval_sets[i],
                                       vocabulary,
                                       initial_embeddings,
@@ -197,8 +203,8 @@ def load_data_and_embeddings(
     if raw_training_data is not None:
         logger.Log("Processing raw training data ...")
         AddCandidatesToDocs(raw_training_data, candidate_handler,
-                            vocab=entity_vocab, topn=topn_candidates,
-                            include_unresolved=FLAGS.include_unresolved, logger=logger)
+                            vocab=entity_vocab, is_eval=False, logger=logger,
+                            include_unresolved=FLAGS.include_unresolved)
         training_data = PreprocessDataset(raw_training_data,
                                           vocabulary,
                                           initial_embeddings,
@@ -210,25 +216,14 @@ def load_data_and_embeddings(
                                           include_unresolved=FLAGS.include_unresolved,
                                           allow_cropping=FLAGS.allow_cropping)
         training_data_length = training_data[0].shape[0]
-        training_data_iter = []
-        training_data_iter.append(MakeTrainingIterator(training_data, FLAGS.batch_size, FLAGS.smart_batching))
-
-    if FLAGS.cross_validation > 0:
-        logger.Log("Creating cross validation batch iterators from eval data alone ...")
-        # get both train_iter and eval_iter from eval data according to cur_validation
-        training_data_iter, eval_iterators, training_data_length = MakeCrossIterator(eval_sets[0],
-                                                               FLAGS.batch_size,
-                                                               FLAGS.cross_validation, logger=logger)
-    else:
-        eval_iterators = []
-        # get eval_iter from eval data
-        eval_itset = []
-        for eval_data in eval_sets:
-            eval_it = MakeEvalIterator(
-                eval_data,
-                FLAGS.batch_size)
-            eval_itset.append(eval_it)
-        eval_iterators.append(eval_itset)
+        training_data_iter = MakeTrainingIterator(training_data, FLAGS.batch_size, FLAGS.smart_batching)
+    logger.Log("Processing raw eval data ...")
+    eval_iterators = []
+    for eval_data in eval_sets:
+        eval_it = MakeEvalIterator(
+            eval_data,
+            FLAGS.batch_size)
+        eval_iterators.append(eval_it)
 
     feature_dim = feature_manager.getFeatureDim()
 
@@ -310,8 +305,6 @@ def get_flags():
     gflags.DEFINE_integer("doc_length", 100, "")
     gflags.DEFINE_integer("max_candidates_per_document", 200, "")
     gflags.DEFINE_integer("topn_candidate", 20, "Use all candidates if set 0.")
-    gflags.DEFINE_integer("genre", 1, "For conll, [0:testa, 1:testb, 2:all] for evaluation, "
-                                      "For xlwiki, [0:easy, 1:hard, 2:all].")
 
     # KBP data
     gflags.DEFINE_string(
@@ -348,12 +341,6 @@ def get_flags():
         "eval_only_mode_use_best_checkpoint",
         True,
         "When in eval_only_mode, load the ckpt_best checkpoint.")
-    gflags.DEFINE_integer(
-        "cross_validation",
-        -1,
-        "how many shares for training, plus extra one for dev, one for test. "
-        "default -1 indicates no cross_validation."
-        "set cross_validation will only take training paths and files.")
 
     # Model architecture settings.
     gflags.DEFINE_enum(

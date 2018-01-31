@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 from pyxdameraulevenshtein import normalized_damerau_levenshtein_distance
-from ncel.utils.data import PADDING_ID
 from ncel.utils.layers import cosSim
 
 class FeatureGenerator:
@@ -21,7 +20,64 @@ class FeatureGenerator:
         self._use_embeddings = use_embeddings
 
         self._split_by_sent = True
+        if not self._split_by_sent and self._local_window == 0:
+            self._split_by_sent = True
         self._feature_dim = None
+
+    def AddEmbeddingFeatures(self, dataset):
+        for i, doc in enumerate(dataset):
+            for j, mention in enumerate(doc.mentions):
+                self.AddMentionEmbeddingFeatures(dataset[i].mentions[j])
+
+    def AddMentionEmbeddingFeatures(self, mention):
+        lc_emb = None
+        rc_emb = None
+        ls_emb = None
+        rs_emb = None
+        if self._local_window >= 0:
+            window = self._local_window if self._local_window > 0 else None
+            left_c = mention.left_context(max_len=window,
+                                          split_by_sent=self._split_by_sent)
+            right_c = mention.right_context(max_len=window,
+                                            split_by_sent=self._split_by_sent)
+            if len(left_c) > 0: lc_emb = self.getTokenEmbeds(left_c)
+            if len(right_c) > 0: rc_emb = self.getTokenEmbeds(right_c)
+
+        if self._global_window >= 0:
+            window = self._global_window if self._global_window > 0 else None
+            left_s = mention.left_sent(window)
+            right_s = mention.right_sent(window)
+            if len(left_s) > 0: ls_emb = self.docEmbed(left_s)
+            if len(right_s) > 0: rs_emb = self.docEmbed(right_s)
+
+        for i, candidate in enumerate(mention):
+            self.AddCandidateEmbeddingFeatures(mention.candidates[i], lc_emb, rc_emb, ls_emb, rs_emb)
+            mention.candidates[i].setContextSimilarity()
+
+    def AddCandidateEmbeddingFeatures(self, candidate, left_context_embeddings, right_context_embeddings,
+                             left_sent_embeddings, right_sent_embeddings):
+        cand_emb = self.sense_embeddings[candidate.id]
+        candidate.setSenseEmbeddings(cand_emb)
+        candidate.setLeftContextEmbeddings(self.getFeatureEmbeddings(cand_emb, left_context_embeddings))
+        candidate.setRightContextEmbeddings(self.getFeatureEmbeddings(cand_emb, right_context_embeddings))
+        candidate.setLeftSentEmbeddings(self.getFeatureEmbeddings(cand_emb, left_sent_embeddings))
+        candidate.setRightSentEmbeddings(self.getFeatureEmbeddings(cand_emb, right_sent_embeddings))
+
+        if self._use_mu:
+            cand_mu_emb = self.mu_embeddings[candidate.id]
+            candidate.setSenseMuEmbeddings(cand_mu_emb)
+            candidate.setLeftContextMuEmbeddings(self.getFeatureEmbeddings(cand_emb, left_context_embeddings))
+            candidate.setRightContextMuEmbeddings(self.getFeatureEmbeddings(cand_emb, right_context_embeddings))
+            candidate.setLeftSentMuEmbeddings(self.getFeatureEmbeddings(cand_emb, left_sent_embeddings))
+            candidate.setRightSentMuEmbeddings(self.getFeatureEmbeddings(cand_emb, right_sent_embeddings))
+
+    def getFeatureEmbeddings(self, query_emb, embeddings):
+        if embeddings is not None:
+            lc_emb = self.getSeqEmbeddings(embeddings, query_emb=query_emb) if \
+                self._has_att else self.getSeqEmbeddings(embeddings)
+        else:
+            lc_emb = None
+        return lc_emb
 
     def getFeatureDim(self):
         return self._feature_dim
@@ -76,118 +132,15 @@ class FeatureGenerator:
 
         return features
 
-    def buildContextFeature(self, doc):
-        feature = []
-
-        for mention in doc.mentions:
-            lc_emb = None
-            rc_emb = None
-            ls_emb = None
-            rs_emb = None
-            if self._local_window >= 0:
-                window = self._local_window if self._local_window>0 else None
-                left_c = mention.left_context(max_len=window,
-                                                split_by_sent=self._split_by_sent)
-                right_c = mention.right_context(max_len=window,
-                                                split_by_sent=self._split_by_sent)
-                if len(left_c) > 0: lc_emb = self.getTokenEmbeds(left_c)
-                if len(right_c) > 0: rc_emb = self.getTokenEmbeds(right_c)
-
-            if self._global_window >= 0:
-                window = self._global_window if self._global_window > 0 else None
-                left_s = mention.left_sent(window)
-                right_s = mention.right_sent(window)
-                if len(left_s) > 0 : ls_emb = self.docEmbed(left_s)
-                if len(right_s) > 0 : rs_emb = self.docEmbed(right_s)
-
-            for cand in mention.candidates:
-                tmp_f = []
-                cand_emb = self.sense_embeddings[cand.id]
-                tmp_f.append(cand_emb)
-                cand_mu_emb = None
-                if self._use_mu:
-                    cand_mu_emb = self.mu_embeddings[cand.id]
-                    tmp_f.append(cand_mu_emb)
-                if self._local_window >= 0:
-                    left_sense_local_emb = self.getAttSentEmbed(cand_emb, lc_emb)
-                    right_sense_local_emb = self.getAttSentEmbed(cand_emb, rc_emb)
-                    tmp_f.extend([left_sense_local_emb, right_sense_local_emb])
-                    if cand_mu_emb is not None:
-                        left_mu_local_emb = self.getAttSentEmbed(cand_mu_emb, lc_emb)
-                        right_mu_local_emb = self.getAttSentEmbed(cand_mu_emb, rc_emb)
-                        tmp_f.extend([left_mu_local_emb, right_mu_local_emb])
-                if self._global_window >= 0:
-                    left_sense_global_emb = self.getAttSentEmbed(cand_emb, ls_emb)
-                    right_sense_global_emb = self.getAttSentEmbed(cand_emb, rs_emb)
-                    tmp_f.extend([left_sense_global_emb, right_sense_global_emb])
-                    if cand_mu_emb is not None:
-                        left_mu_global_emb = self.getAttSentEmbed(cand_mu_emb, ls_emb)
-                        right_mu_global_emb = self.getAttSentEmbed(cand_mu_emb, rs_emb)
-                        tmp_f.extend([left_mu_global_emb, right_mu_global_emb])
-                feature.append(np.concatenate(tmp_f, axis=0))
-
-        return np.array(feature)
-
-    def buildContextSimilarity(self, doc):
-        feature = []
-
-        for mention in doc.mentions:
-            lc_emb = None
-            rc_emb = None
-            ls_emb = None
-            rs_emb = None
-            if self._local_window >= 0:
-                window = self._local_window if self._local_window>0 else None
-                left_c = mention.left_context(max_len=window,
-                                                split_by_sent=self._split_by_sent)
-                right_c = mention.right_context(max_len=window,
-                                                split_by_sent=self._split_by_sent)
-                if len(left_c) > 0: lc_emb = self.getTokenEmbeds(left_c)
-                if len(right_c) > 0: rc_emb = self.getTokenEmbeds(right_c)
-
-            if self._global_window >= 0:
-                window = self._global_window if self._global_window > 0 else None
-                left_s = mention.left_sent(window)
-                right_s = mention.right_sent(window)
-                if len(left_s) > 0 : ls_emb = self.docEmbed(left_s)
-                if len(right_s) > 0 : rs_emb = self.docEmbed(right_s)
-
-            for cand in mention.candidates:
-                tmp_f = []
-                cand_emb = self.sense_embeddings[cand.id]
-                cand_mu_emb = self.mu_embeddings[cand.id] if self._use_mu else None
-
-                if self._local_window >= 0:
-                    left_sense_local_emb = self.getAttSentEmbed(cand_emb, lc_emb)
-                    right_sense_local_emb = self.getAttSentEmbed(cand_emb, rc_emb)
-                    tmp_f.extend([cosSim(cand_emb, left_sense_local_emb), cosSim(cand_emb, right_sense_local_emb)])
-
-                    if cand_mu_emb is not None:
-                        left_mu_local_emb = self.getAttSentEmbed(cand_mu_emb, lc_emb)
-                        right_mu_local_emb = self.getAttSentEmbed(cand_mu_emb, rc_emb)
-                        tmp_f.extend([cosSim(cand_mu_emb, left_mu_local_emb), cosSim(cand_mu_emb, right_mu_local_emb)])
-
-                if self._global_window >= 0:
-                    left_sense_global_emb = self.getAttSentEmbed(cand_emb, ls_emb)
-                    right_sense_global_emb = self.getAttSentEmbed(cand_emb, rs_emb)
-                    tmp_f.extend([cosSim(cand_emb, left_sense_global_emb), cosSim(cand_emb, right_sense_global_emb)])
-
-                    if cand_mu_emb is not None:
-                        left_mu_global_emb = self.getAttSentEmbed(cand_mu_emb, ls_emb)
-                        right_mu_global_emb = self.getAttSentEmbed(cand_mu_emb, rs_emb)
-                        tmp_f.extend(
-                            [cosSim(cand_mu_emb, left_mu_global_emb), cosSim(cand_mu_emb, right_mu_global_emb)])
-                tmp_f = np.concatenate((np.array(tmp_f), cand_emb, left_sense_local_emb, right_sense_local_emb), axis=0)
-                feature.append(tmp_f)
-
-        return np.array(feature)
-
-    def getAttSentEmbed(self, query_emb, sent_embeds):
-        if not isinstance(sent_embeds, type(None)) and sent_embeds.shape[0]>0:
-            att = np.dot(sent_embeds, query_emb.transpose())
+    def getSeqEmbeddings(self, sent_embeds, query_emb=None):
+        if len(sent_embeds.shape) > 1:
+            if query_emb is not None:
+                att = np.dot(sent_embeds, query_emb.transpose())
+            else:
+                att = np.ones(sent_embeds.shape[0])
             embeds = np.dot(att.transpose(), sent_embeds)
         else:
-            embeds = np.zeros(query_emb.shape[-1])
+            embeds = sent_embeds
         return embeds
 
     def getTokenEmbeds(self, tokens):
@@ -217,22 +170,50 @@ class FeatureGenerator:
                 gold_ids.append(1 if c.getIsGlod() else 0)
         return np.array(gold_ids), np.array(candidate_ids)
 
+    def getContextFeature(self, doc):
+        features = []
+        for m in doc.mentions:
+            for c in m.candidates:
+                tmp_f = []
+                if self._local_window >= 0:
+                    tmp_f.extend(c.getSenseContextSim())
+                    if self._use_mu:
+                        tmp_f.extend(c.getMuContextSim())
+                if self._global_window >= 0:
+                    tmp_f.extend(c.getSenseSentSim())
+                    if self._use_mu:
+                        tmp_f.extend(c.getMuSentSim())
+                if self._use_embeddings:
+                    tmp_context_emb = np.concatenate(c.getContextEmb(), axis=0)
+                    tmp_f = np.concatenate((np.array(tmp_f), c._sense_emb, tmp_context_emb), axis=0)
+                features.append(tmp_f)
+        return np.array(features)
+
     def getFeatures(self, doc):
         # doc.n_candidates * base_feature_dim
         base_feature = np.array(self.getBaseFeature(doc))
-        assert base_feature.shape[0]==doc.n_candidates, "Error! No matched base feature extraction!"
-        self._feature_dim = base_feature.shape[1]
+        if len(base_feature.shape) > 1:
+            assert base_feature.shape[0]==doc.n_candidates, "Error! No matched base feature extraction!"
+            self._feature_dim = base_feature.shape[1]
+        else:
+            assert doc.n_candidates==1, "Error! No matched base feature extraction!"
+            self._feature_dim = base_feature.shape[0]
         # doc.n_candidates * context_feature_dim
         if self._local_window >= 0 or self._global_window >= 0:
-            context_feature = self.buildContextFeature(doc) if self._use_embeddings else self.buildContextSimilarity(doc)
-            assert context_feature.shape[0] == doc.n_candidates, "Error! No matched context feature extraction!"
-            self._feature_dim += context_feature[0].shape[0]
+            context_feature = self.getContextFeature(doc)
+            if len(context_feature.shape) > 1:
+                assert context_feature.shape[0] == doc.n_candidates, "Error! No matched base feature extraction!"
+                self._feature_dim += context_feature.shape[1]
+            else:
+                assert doc.n_candidates == 1, "Error! No matched base feature extraction!"
+                self._feature_dim += context_feature.shape[0]
+
             x = np.concatenate((base_feature, context_feature), axis=1)
         else:
             x = base_feature
 
         # candidate_ids: doc.n_candidates
-        # gold_id: doc.n_candidates * 2
+        # gold_id: doc.n_candidates
         y, candidate_ids = self.getCandidateAndGoldIds(doc)
 
         return x, candidate_ids, y

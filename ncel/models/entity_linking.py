@@ -307,22 +307,15 @@ def run(only_forward=False):
             logger.LogEntry(log_entry)
     else:
         final_A = Accumulator(maxlen=FLAGS.deque_length)
-        for cur_loop in range(total_loops):
-            logger.Log("Cross validation the {}/{} loop ...".format(cur_loop, total_loops))
-            train_loop(
-                FLAGS,
-                model,
-                trainer,
-                training_data_iter[cur_loop],
-                eval_iterators[cur_loop],
-                logger,
-                vocabulary,
-                final_A)
-            trainer.reset()
-            trainer.optimizer_reset(FLAGS.learning_rate)
-            model.cpu()
-            model.reset_parameters()
-            model.cuda()
+        train_loop(
+            FLAGS,
+            model,
+            trainer,
+            training_data_iter,
+            eval_iterators,
+            logger,
+            vocabulary,
+            final_A)
         finalStats(final_A, logger)
 
 if __name__ == '__main__':
