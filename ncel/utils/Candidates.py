@@ -253,18 +253,24 @@ class Candidate():
     def getMuSentEmb(self):
         return self._context_mu_emb[2:]
 
+
+NUM_PRIOR = 5
 # candidates is a list
-def resortCandidates(candidates):
-    candidates = sorted(candidates, key=lambda x:x.getEntityMentionPrior(), reverse=True)
-    gold_idx1 = 0
-    gold_idx2 = 0
-    for i, cand in enumerate(candidates):
-        if cand.getIsGlod() and i >=5:
-            gold_idx1 = i
-            tmp_candidates = sorted(candidates, key=lambda x:max(x._sense_context_sim+x._mu_context_sim), reverse=True)
-            for j, c in enumerate(tmp_candidates):
-                if c.getIsGlod():
-                    gold_idx2 = j
+def resortCandidates(candidates, topn=NUM_PRIOR+2, is_eval=False):
+    if topn > 0:
+        topn_prior = NUM_PRIOR
+        topn_sim = topn-NUM_PRIOR
+
+        candidates = sorted(candidates, key=lambda x:x.getEntityMentionPrior(), reverse=True)
+        new_candidates = candidates[:topn_prior]
+        tmp_candidates = sorted(candidates[topn_prior:], key=lambda x: x._mu_context_sim[1], reverse=True)
+        new_candidates += tmp_candidates[:topn_sim]
+        if not is_eval:
+            gold_candidate = None
+            for cand in candidates:
+                if cand.getIsGlod:
+                    gold_candidate = cand
                     break
-            break
-    return candidates, gold_idx1, gold_idx2
+            if gold_candidate.id not in [c.id for c in new_candidates]:
+                new_candidates[topn_prior-1] = gold_candidate
+    return candidates

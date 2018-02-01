@@ -20,6 +20,8 @@ import torch
 
 FLAGS = gflags.FLAGS
 
+MAX_CANDIDATES = 30
+
 DATA_TYPE = ["conll",
             "kbp10",
             "kbp15",
@@ -187,7 +189,7 @@ def load_data_and_embeddings(
     eval_sets = []
     for i, raw_eval_data in enumerate(raw_eval_sets):
         logger.Log("Processing {} raw eval data ...".format(i))
-        AddCandidatesToDocs(raw_eval_sets[i], candidate_handler,
+        AddCandidatesToDocs(raw_eval_sets[i], candidate_handler, topn=MAX_CANDIDATES,
                             vocab=entity_vocab, is_eval=True, logger=logger,
                             include_unresolved=FLAGS.include_unresolved)
         eval_data = PreprocessDataset(raw_eval_sets[i],
@@ -197,6 +199,8 @@ def load_data_and_embeddings(
                                       FLAGS.doc_length,
                                       FLAGS.max_candidates_per_document,
                                       feature_manager,
+                                      topn_candidate=FLAGS.topn,
+                                      is_eval=False,
                                       logger=logger,
                                       include_unresolved=FLAGS.include_unresolved,
                                       allow_cropping=FLAGS.allow_cropping)
@@ -205,7 +209,7 @@ def load_data_and_embeddings(
     training_data_length = 0
     if raw_training_data is not None:
         logger.Log("Processing raw training data ...")
-        AddCandidatesToDocs(raw_training_data, candidate_handler,
+        AddCandidatesToDocs(raw_training_data, candidate_handler, topn=MAX_CANDIDATES,
                             vocab=entity_vocab, is_eval=False, logger=logger,
                             include_unresolved=FLAGS.include_unresolved)
         training_data = PreprocessDataset(raw_training_data,
@@ -215,6 +219,8 @@ def load_data_and_embeddings(
                                           FLAGS.doc_length,
                                           FLAGS.max_candidates_per_document,
                                           feature_manager,
+                                          topn_candidate=FLAGS.topn,
+                                          is_eval=False,
                                           logger=logger,
                                           include_unresolved=FLAGS.include_unresolved,
                                           allow_cropping=FLAGS.allow_cropping)
@@ -307,7 +313,7 @@ def get_flags():
     gflags.DEFINE_integer("seq_length", 200, "")
     gflags.DEFINE_integer("doc_length", 100, "")
     gflags.DEFINE_integer("max_candidates_per_document", 200, "")
-    gflags.DEFINE_integer("topn_candidate", 20, "Use all candidates if set 0.")
+    gflags.DEFINE_integer("topn", 7, "Use all candidates if set 0.")
 
     # KBP data
     gflags.DEFINE_string(

@@ -358,24 +358,18 @@ def EntityToIDs(entity_vocabulary, dataset, include_unresolved=False, logger=Non
              (g_unk * 100.0 / m_num), g_unk, m_num, (nil_num * 100.0 / m_num), nil_num, m_num))
     return dataset
 
-def CropMentionAndCandidates(dataset, max_candidates, topn=0, allow_cropping=True, logger=None):
+# todo: cropped those mention with no gold candidates
+def CropMentionAndCandidates(dataset, max_candidates,
+                             topn=0, is_eval=False, allow_cropping=True, logger=None):
     # crop mention candidates according to topn
-    if topn >= 0:
-        total_candidates = 0
-        total_g1 = 0
-        total_g2 = 0
+    if topn > 0:
         for i, doc in enumerate(dataset):
             for j, ment in enumerate(doc.mentions):
                 cand_len = len(ment.candidates)
                 if cand_len > topn:
-                    dataset[i].mentions[j].candidates, g1, g2 = resortCandidates(ment.candidates)
-                    if g1>0 and g2>0:
-                        total_candidates += 1
-                        total_g1 += g1
-                        total_g2 += g2
-                    #dataset[i].mentions[j].candidates = resortCandidates(ment.candidates)[:topn]
-                    #dataset[i].n_candidates -= (cand_len-topn)
-        logger.Log("avg g1:{} --> avg g2:{}, total:{}".format(total_g1/float(total_candidates), total_g2/float(total_candidates), total_candidates))
+                    dataset[i].mentions[j].candidates = resortCandidates(ment.candidates,
+                                                             topn=topn, is_eval=is_eval)
+                    dataset[i].n_candidates -= (cand_len-topn)
     raw_doc_num = len(dataset)
     # over mention-candidate_pairs size that may be cropped
     cropped_dataset = [doc for doc in dataset if doc.n_candidates <= max_candidates]
@@ -464,6 +458,8 @@ def PreprocessDataset(
         doc_length,
         max_candidates,
         feature_manager,
+        is_eval=False,
+        topn_candidate=0,
         logger=None,
         include_unresolved=False,
         allow_cropping=False):
@@ -475,7 +471,8 @@ def PreprocessDataset(
     dataset = EntityToIDs(entity_vocab, dataset,
                           include_unresolved=include_unresolved, logger=logger)
     feature_manager.AddEmbeddingFeatures(dataset)
-    dataset = CropMentionAndCandidates(dataset, max_candidates, logger=logger)
+    dataset = CropMentionAndCandidates(dataset, max_candidates,
+                                       topn=topn_candidate, is_eval=is_eval, logger=logger)
     # inspectDoc(dataset[0], word_vocab=word_vocabulary)
     X = []
     Y = []
