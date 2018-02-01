@@ -360,13 +360,14 @@ def EntityToIDs(entity_vocabulary, dataset, include_unresolved=False, logger=Non
 
 def CropMentionAndCandidates(dataset, max_candidates, topn=0, allow_cropping=True, logger=None):
     # crop mention candidates according to topn
-    if topn > 0:
-        for i, doc in dataset:
-            for j, ment in doc.mentions:
+    if topn >= 0:
+        for i, doc in enumerate(dataset):
+            for j, ment in enumerate(doc.mentions):
                 cand_len = len(ment.candidates)
                 if cand_len > topn:
-                    dataset[i].mentions[j].candidates = resortCandidates(ment.candidates)[:topn]
-                    dataset[i].n_candidates -= (cand_len-topn)
+                    dataset[i].mentions[j].candidates = resortCandidates(ment.candidates)
+                    #dataset[i].mentions[j].candidates = resortCandidates(ment.candidates)[:topn]
+                    #dataset[i].n_candidates -= (cand_len-topn)
     raw_doc_num = len(dataset)
     # over mention-candidate_pairs size that may be cropped
     cropped_dataset = [doc for doc in dataset if doc.n_candidates <= max_candidates]

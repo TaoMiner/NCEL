@@ -76,11 +76,11 @@ class GraphConvolutionNetwork(Module):
             features_dim = layer_dim
             layer_dim -= layer_diff
 
-    def forward(self, input, adj, mask=None):
-        batch_size, node_num, feature_dim = input.size()
+    def forward(self, h, adj, mask=None):
+        batch_size, node_num, feature_dim = h.size()
         if self.gc_ln:
-            h = self.ln_inp(input)
-        h = F.dropout(input, self.dropout_rate, training=self.training)
+            h = self.ln_inp(h)
+        h = F.dropout(h, self.dropout_rate, training=self.training)
         for i in range(self.num_layers):
             layer = getattr(self, 'l{}'.format(i))
             h = layer(h, adj)
@@ -141,11 +141,11 @@ class ResGraphConvolution(Module):
 
         self.skip_connect_layer = Linear()(input_dim, hidden_dim) if input_dim != hidden_dim else None
 
-    def forward(self, input, adj, mask=None):
-        batch_size, node_num, feature_dim = input.size()
+    def forward(self, h, adj, mask=None):
+        batch_size, node_num, feature_dim = h.size()
         if self.gc_ln:
-            h = self.ln_inp(input)
-        h = F.dropout(input, self.dropout_rate, training=self.training)
+            h = self.ln_inp(h)
+        h = F.dropout(h, self.dropout_rate, training=self.training)
         for i in range(self.num_layers):
             layer = getattr(self, 'l{}'.format(i))
             h = layer(h, adj)

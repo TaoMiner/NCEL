@@ -13,7 +13,7 @@ from ncel.utils.logging import eval_stats, print_samples, finalStats
 import ncel.utils.logging_pb2 as pb
 from ncel.utils.trainer import ModelTrainer
 
-from ncel.models.base import get_data_manager, get_flags, get_batch
+from ncel.models.base import get_flags, get_batch
 from ncel.models.base import init_model, log_path, flag_defaults
 from ncel.models.base import load_data_and_embeddings
 
@@ -58,10 +58,7 @@ def evaluate(FLAGS, model, eval_set, log_entry,
         eval_X_batch, eval_adj_batch, eval_y_batch, eval_num_candidates_batch, eval_doc_batch = batch
         # batch_candidates = eval_num_candidates_batch.sum()
         # Run model.
-        output = model(
-            eval_X_batch,
-            eval_num_candidates_batch,
-            adj=eval_adj_batch)
+        output = model(eval_X_batch, eval_adj_batch, length=eval_num_candidates_batch)
 
         if show_sample:
             samples = print_samples(output.data.cpu().numpy(), vocabulary, eval_doc_batch, only_one=True)
@@ -179,7 +176,7 @@ def train_loop(
         trainer.optimizer_zero_grad()
 
         # Run model. output: batch_size * node_num * 2
-        output = model(x, num_candidates, adj=adj)
+        output = model(x, adj, length=num_candidates)
 
         # Calculate mention accuracy.
         batch_candidates, candidate_correct, batch_mentions, mention_correct, batch_docs, doc_acc_per_batch = \

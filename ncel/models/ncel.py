@@ -7,7 +7,7 @@ import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
 
-from ncel.utils.layers import GraphConvolutionNetwork, Embed, MLP, MLPClassifier, to_gpu
+from ncel.utils.layers import GraphConvolutionNetwork, Linear, to_gpu, UniInitializer, LayerNormalization
 
 
 def build_model(feature_dim, FLAGS):
@@ -45,70 +45,54 @@ class NCEL(nn.Module):
                  num_gc_layer=2,
                  gc_ln=False,
                  num_cm_layer=1,
-                 cm_ln=False,
+                 class_ln=False,
                  dropout = 0.0,
                  res_gc_layer_num=0
                  ):
         super(NCEL, self).__init__()
 
-        hidden_dim = input_dim
-        self.mlp = None
-        if num_mlp_layers > 0:
-            self.mlp = MLP(input_dim, mlp_dim, num_mlp_layers, mlp_ln,
-                       dropout)
-            hidden_dim = mlp_dim
+        self.drop_out_rate = dropout
+        self.class_ln = class_ln
 
-        self.gc_layer = None
-        if num_gc_layer > 0:
-            self.gc_layer = GraphConvolutionNetwork(hidden_dim, gc_dim, gc_ln=gc_ln, bias=True,
-                num_layers=num_gc_layer, dropout=dropout, res_gc_layer_num=res_gc_layer_num)
-            hidden_dim = gc_dim
+        self.gc_layer = GraphConvolutionNetwork(input_dim, gc_dim, gc_ln=gc_ln, bias=True,
+            num_layers=num_gc_layer, dropout=dropout, res_gc_layer_num=res_gc_layer_num)
 
-        self.classifer_mlp = MLPClassifier(hidden_dim, classifier_dim, num_class, num_cm_layer,
-                                 mlp_ln=cm_ln, classifier_dropout_rate=dropout)
+        if self.class_ln:
+            self.ln_inp = LayerNormalization(input_dim)
 
-        self.embedding_dim = embedding_dim
-        self._num_class = num_class
-        self._feature_dim = input_dim
-
-        # For sample printing and logging
-        self.mask_memory = None
-        self.inverted_vocabulary = None
-        self.temperature_to_display = 0.0
+        self.classifer = Linear(initializer=UniInitializer)(gc_dim, 2)
 
     # x: batch_size * node_num * feature_dim
     # adj: batch_size * node_num * node_num
     # length: batch_size
-    def forward(self, x, length=None, adj=None):
+    def forward(self, x, adj, length=None):
         batch_size, node_num, feature_dim = x.shape
         h = to_gpu(Variable(torch.from_numpy(x), requires_grad=False)).float()
+
         length_mask = None
         if length is not None:
             lengths_var = to_gpu(Variable(torch.from_numpy(length), requires_grad=False)).long()
             # batch_size * node_num
             length_mask = sequence_mask(lengths_var, node_num)
+
             class_mask = length_mask.unsqueeze(2).expand(batch_size, node_num, self._num_class)
             class_mask = class_mask.float()
         # adj: batch * node_num * node_num
 
-        h = self.mlp(h, mask=length_mask) if not isinstance(self.mlp, type(None)) else h
-        if not isinstance(self.gc_layer, type(None)) and adj is not None:
-            adj = to_gpu(Variable(torch.from_numpy(adj), requires_grad=False)).float()
-            h = self.gc_layer(h, adj, mask=length_mask)
+        adj = to_gpu(Variable(torch.from_numpy(adj), requires_grad=False)).float()
+        h = self.gc_layer(h, adj, mask=length_mask)
         # h: batch * node_num * hidden
-        batch_size, node_num, _ = h.size()
-        output = self.classifer_mlp(h, mask=length_mask)
+        if self.class_ln:
+            h = self.ln_inp(h)
+        h = F.dropout(h, self.drop_out_rate, training=self.training)
+        output = self.classifer(h)
         # batch_size * node_num * self._num_class
         output = masked_softmax(output, mask=class_mask)
         return output
 
     def reset_parameters(self):
-        if self.mlp is not None:
-            self.mlp.reset_parameters()
-        if self.gc_layer is not None:
-            self.gc_layer.reset_parameters()
-        if self.classifer_mlp is not None:
-            self.classifer_mlp.reset_parameters()
+        self.gc_layer.reset_parameters()
+        self.classifer.reset_parameters()
 
 
 # length: batch_size

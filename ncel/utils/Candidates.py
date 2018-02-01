@@ -132,6 +132,7 @@ class CandidatesHandler:
         # NIL is only for inference
         if not is_eval and not is_trainable:
             mention._is_trainable = False
+            mention._document.n_candidates -= len(mention.candidates)
 
     def add_candidates_to_document(self, document, vocab=None, is_eval=False, topn=0):
         for i, mention in enumerate(document.mentions):
@@ -257,4 +258,12 @@ class Candidate():
 # candidates is a list
 def resortCandidates(candidates):
     candidates = sorted(candidates, key=lambda x:x.getEntityMentionPrior(), reverse=True)
+    print("doc:{},mention len:{},is_trainable:{}".format(candidates[0]._mention._document.name,
+                                                         len(candidates[0]._mention.candidates),
+                                                         candidates[0]._mention._is_trainable))
+    for i, cand in enumerate(candidates):
+        if cand.getIsGlod() and i >=5:
+            print("gold index:{}, mention len:{}, sim1:{}, sim2:{}".format(i,
+                     len(cand._mention.candidates), cand._sense_context_sim, cand._context_mu_emb))
+            break
     return candidates
