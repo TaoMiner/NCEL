@@ -68,7 +68,7 @@ def recursively_set_device(inp, gpu):
 
 # batch_size * node_num * 2, output, np.narray
 # batch_size * node_num, y
-def ComputeMentionAccuracy(output, y, docs, NIL_thred=0.1):
+def ComputeMentionAccuracy(output, y, docs, include_unresolved=False, NIL_thred=0.1):
     batch_docs, max_candidates = y.shape
     doc_acc = 0.0
     total_mentions = 0
@@ -90,8 +90,10 @@ def ComputeMentionAccuracy(output, y, docs, NIL_thred=0.1):
             pred_prob = output_slice[pred]
             y_slice = y_doc[mc_start:mc_end]
             total_candidates_correct += len(output_slice[np.argmax(out_doc[mc_start:mc_end,:], axis=1)==y_slice])
-            if (1 not in y_slice and pred_prob <= NIL_thred) or\
-                    (1 in y_slice and np.argmax(y_slice)==pred): dm_correct += 1
+            if 1 in y_slice and np.argmax(y_slice)==pred :
+                dm_correct += 1
+            elif include_unresolved and 1 not in y_slice and pred_prob <= NIL_thred:
+                dm_correct += 1
             mc_start = mc_end
         total_mention_correct += dm_correct
         doc_acc += dm_correct/float(len(doc.mentions))

@@ -121,12 +121,17 @@ class CandidatesHandler:
 
     def add_candidates_to_mention(self, mention, vocab=None, is_eval=False, topn=0):
         mention.candidates = self.get_candidates_for_mention(mention,
-                                                             vocab=vocab, is_eval=is_eval, topn=topn)
+                                   vocab=vocab, is_eval=is_eval, topn=topn)
         # set candidate labels
         is_NIL = True if isinstance(mention.gold_ent_id(), type(None)) else False
+        is_trainable = False
         for i, cand in enumerate(mention.candidates):
             if not is_NIL and cand.id == mention.gold_ent_id():
                 mention.candidates[i].setGold()
+                is_trainable = True
+        # NIL is only for inference
+        if not is_eval and not is_trainable:
+            mention._is_trainable = False
 
     def add_candidates_to_document(self, document, vocab=None, is_eval=False, topn=0):
         for i, mention in enumerate(document.mentions):
