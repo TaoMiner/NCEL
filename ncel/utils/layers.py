@@ -141,10 +141,9 @@ class ResGraphConvolution(Module):
 
         self.skip_connect_layer = Linear()(input_dim, hidden_dim) if input_dim != hidden_dim else None
 
-    def forward(self, h, adj, mask=None):
-        batch_size, node_num, feature_dim = h.size()
-        if self.gc_ln:
-            h = self.ln_inp(h)
+    def forward(self, input, adj, mask=None):
+        batch_size, node_num, feature_dim = input.size()
+        h = self.ln_inp(input) if self.gc_ln else input
         h = F.dropout(h, self.dropout_rate, training=self.training)
         for i in range(self.num_layers):
             layer = getattr(self, 'l{}'.format(i))
@@ -163,10 +162,10 @@ class ResGraphConvolution(Module):
             h = h + self.skip_connect_layer(input)
         else:
             h = h + input
-            if not isinstance(mask, type(None)):
-                gc_mask = mask.unsqueeze(2).expand(batch_size, node_num, self.hidden_dim)
-                gc_mask = gc_mask.float()
-                h = h * gc_mask
+        if not isinstance(mask, type(None)):
+            gc_mask = mask.unsqueeze(2).expand(batch_size, node_num, self.hidden_dim)
+            gc_mask = gc_mask.float()
+            h = h * gc_mask
         return h
 
     def reset_parameters(self):

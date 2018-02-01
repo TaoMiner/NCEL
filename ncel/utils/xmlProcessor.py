@@ -4,6 +4,8 @@ try:
 except ImportError:
     import xml.etree.ElementTree as ET
 
+import html
+
 class xmlHandler(object):
     def __init__(self, txt_elem_list, int_elem_list):
         self.doc_name = ""
@@ -32,7 +34,7 @@ class xmlHandler(object):
                         elem.clear()  # disgrad elem
                     if 'annotation' in path:
                         if elem.tag in self._txt_elem_list:
-                            annotation[elem.tag] = elem.text
+                            annotation[elem.tag] = html.unescape(elem.text)
                         elif elem.tag in self._int_elem_list:
                             annotation[elem.tag] = int(elem.text)
                         elif elem.tag == 'annotation':

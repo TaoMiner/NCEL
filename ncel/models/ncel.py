@@ -12,20 +12,12 @@ from ncel.utils.layers import GraphConvolutionNetwork, Linear, to_gpu, UniInitia
 
 def build_model(feature_dim, FLAGS):
     model_cls = NCEL
-    num_class_output = 2
     return model_cls(
-        FLAGS.embedding_dim,
         feature_dim,
-        FLAGS.mlp_dim,
         FLAGS.gc_dim,
-        FLAGS.classifier_dim,
-        num_class=num_class_output,
-        num_mlp_layers=FLAGS.num_mlp_layers,
-        mlp_ln=FLAGS.mlp_ln,
         num_gc_layer=FLAGS.num_gc_layer,
         gc_ln=FLAGS.gc_ln,
-        num_cm_layer=FLAGS.num_cm_layer,
-        cm_ln=FLAGS.cm_ln,
+        class_ln=FLAGS.cm_ln,
         dropout=FLAGS.dropout,
         res_gc_layer_num=FLAGS.res_gc_layer_num
     )
@@ -34,17 +26,10 @@ def build_model(feature_dim, FLAGS):
 class NCEL(nn.Module):
 
     def __init__(self,
-                 embedding_dim,
                  input_dim, # feature_dim
-                 mlp_dim,
                  gc_dim,
-                 classifier_dim,
-                 num_class=2,
-                 num_mlp_layers=1,
-                 mlp_ln=False,
                  num_gc_layer=2,
                  gc_ln=False,
-                 num_cm_layer=1,
                  class_ln=False,
                  dropout = 0.0,
                  res_gc_layer_num=0
@@ -75,7 +60,7 @@ class NCEL(nn.Module):
             # batch_size * node_num
             length_mask = sequence_mask(lengths_var, node_num)
 
-            class_mask = length_mask.unsqueeze(2).expand(batch_size, node_num, self._num_class)
+            class_mask = length_mask.unsqueeze(2).expand(batch_size, node_num, 2)
             class_mask = class_mask.float()
         # adj: batch * node_num * node_num
 

@@ -253,17 +253,18 @@ class Candidate():
     def getMuSentEmb(self):
         return self._context_mu_emb[2:]
 
-
-
 # candidates is a list
 def resortCandidates(candidates):
     candidates = sorted(candidates, key=lambda x:x.getEntityMentionPrior(), reverse=True)
-    print("doc:{},mention len:{},is_trainable:{}".format(candidates[0]._mention._document.name,
-                                                         len(candidates[0]._mention.candidates),
-                                                         candidates[0]._mention._is_trainable))
+    gold_idx1 = 0
+    gold_idx2 = 0
     for i, cand in enumerate(candidates):
         if cand.getIsGlod() and i >=5:
-            print("gold index:{}, mention len:{}, sim1:{}, sim2:{}".format(i,
-                     len(cand._mention.candidates), cand._sense_context_sim, cand._context_mu_emb))
+            gold_idx1 = i
+            tmp_candidates = sorted(candidates, key=lambda x:max(x._sense_context_sim+x._mu_context_sim), reverse=True)
+            for j, c in enumerate(tmp_candidates):
+                if c.getIsGlod():
+                    gold_idx2 = j
+                    break
             break
-    return candidates
+    return candidates, gold_idx1, gold_idx2

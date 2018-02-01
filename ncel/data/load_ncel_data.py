@@ -24,7 +24,7 @@ ssplict_puncRE = re.compile('[{0}{1}]'.format(en_sent_split_punc, zh_ssplit_punc
 class NcelDataLoader(xmlHandler):
     def __init__(self, rawtext_path, mention_fname, include_unresolved=False, lowercase=False,
                  wiki_label2id=None):
-        super(NcelDataLoader, self).__init__(['mention', 'wikiName'], ['offset', 'length'])
+        super(NcelDataLoader, self).__init__(['mention', 'wikiID'], ['offset', 'length'])
         self._fpath = rawtext_path
         self._m_fname = mention_fname
         self._include_unresolved = include_unresolved
