@@ -149,7 +149,8 @@ def load_data_and_embeddings(
          len(candidate_handler._mention_dict), len(mention_vocab), candidate_handler._candidates_total/float(len(candidate_handler._mention_dict)),
          candidate_handler._candidates_total, len(candidate_handler._mention_dict), FLAGS.candidates_file))
 
-    candidate_handler.loadPrior(FLAGS.entity_prior_file)
+    candidate_handler.loadPrior(FLAGS.entity_prior_file, mention_vocab=candidate_handler._mention_dict,
+                                entity_vocab=candidate_handler._candidate_entities)
     id2wiki_vocab = candidate_handler.loadWikiid2Label(FLAGS.wiki_entity_vocab,
                                        id_vocab=candidate_handler._candidate_entities)
 

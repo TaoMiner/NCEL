@@ -330,11 +330,11 @@ def EntityToIDs(entity_vocabulary, dataset, include_unresolved=False, logger=Non
                 continue
             # replace gold id
             if include_unresolved and mention._is_NIL:
-                mention._gold_ent_id = unk_id
+                dataset[i].mentions[j]._gold_ent_id = unk_id
                 nil_num += 1
             elif mention.gold_ent_id() is None or mention.gold_ent_id() not in entity_vocabulary\
                     or mention.gold_ent_id() not in [c.id for c in mention.candidates]:
-                mention._is_trainable = False
+                dataset[i].mentions[j]._is_trainable = False
                 dataset[i].n_candidates -= len(mention.candidates)
                 g_unk += 1
             else:
@@ -344,8 +344,8 @@ def EntityToIDs(entity_vocabulary, dataset, include_unresolved=False, logger=Non
             for k, cand in enumerate(mention.candidates):
                 c_num += 1
                 if cand.id in entity_vocabulary:
-                    cand.id = entity_vocabulary[cand.id]
-                    new_candidates.append(cand)
+                    dataset[i].mentions[j].candidates[k].id = entity_vocabulary[cand.id]
+                    new_candidates.append(dataset[i].mentions[j].candidates[k])
                 else:
                     c_unk += 1
             dataset[i].mentions[j].candidates = new_candidates

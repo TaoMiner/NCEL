@@ -52,7 +52,7 @@ class CandidatesHandler:
 
     # load all candidates prior
     # enti_id \t gobal_prior \t cand_ment::=count \t ...
-    def loadPrior(self, prior_file):
+    def loadPrior(self, prior_file, mention_vocab=None, entity_vocab=None):
         if isinstance(self._prior_mention_dict, type(None)) : self._prior_mention_dict = {}
         if isinstance(self._prior_entity_prob, type(None)) : self._prior_entity_prob = {}
         if isinstance(self._prior_mention_count, type(None)): self._prior_mention_count = {}
@@ -63,11 +63,14 @@ class CandidatesHandler:
                 if self._lowercase: line = line.lower()
                 items = re.split(r'\t', line.strip())
                 entity_id = items[0]
+                if entity_vocab is not None and entity_id not in entity_vocab : continue
                 if len(items) < 3: continue
-                ent_anchor_num = self._prior_entity_prob.get(items[0], 0)
+                ent_anchor_num = self._prior_entity_prob.get(entity_id, 0)
                 for m_count_pair in items[2:]:
                     m_count = re.split(r'::=', m_count_pair)
-                    if len(m_count) != 2: continue
+                    if len(m_count) != 2 : continue
+                    if mention_vocab is None or m_count[0] not in mention_vocab or\
+                                    entity_id not in mention_vocab[m_count[0]]: continue
                     tmp_count = int(m_count[1])
                     ent_anchor_num += tmp_count
                     tmp_mention_ent = self._prior_mention_dict.get(m_count[0], {})
@@ -91,7 +94,7 @@ class CandidatesHandler:
 
             me_count = self._prior_mention_dict[cand.getMentionText()][cand.id] if cand.getMentionText() in self._prior_mention_dict \
                             and cand.id in self._prior_mention_dict[cand.getMentionText()] else 0
-            pem = m_count / float(me_count) if m_count > 0 and me_count > 0 else DEFAULT_PRIOR
+            pem = me_count / float(m_count) if m_count > 0 and me_count > 0 else DEFAULT_PRIOR
 
             candidates[i].setEntityMentionPrior(pem)
             candidates[i].setEntityPrior(self._prior_entity_prob.get(cand.id, DEFAULT_PRIOR))
@@ -248,5 +251,5 @@ class Candidate():
 
 # candidates is a list
 def resortCandidates(candidates):
-    candidates = sorted(candidates, key=lambda x:x.getEntityMentionPrior())
+    candidates = sorted(candidates, key=lambda x:x.getEntityMentionPrior(), reverse=True)
     return candidates
