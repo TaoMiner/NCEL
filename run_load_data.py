@@ -19,8 +19,8 @@ if __name__ == "__main__":
     #                 mention_file='/home/caoyx/data/kbp/kbp_cl/kbp16/eng/eval/kbp16_nw_gold.xml',
     #                 kbp_id2wikiid_file='/home/caoyx/data/kbp/kbp_cl/id.key2015')
     # ncel data
-    docs = load_ncel_data.load_data(text_path='/data/caoyx/el_datasets/ncel-wikidata/small_100000/abstracts_100000/',
-                     mention_file='/data/caoyx/el_datasets/ncel-wikidata/small_100000/wikipedia_100000.xml',
+    docs = load_ncel_data.load_data(text_path='/data/caoyx/el_datasets/ncel-wikidata/abstracts_100000/',
+                     mention_file='/data/caoyx/el_datasets/ncel-wikidata/wikipedia_100000.xml',
                      wiki_entity_file='/data/caoyx/el_datasets/vocab_entity.dat')
 
 

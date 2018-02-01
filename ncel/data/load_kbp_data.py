@@ -32,14 +32,14 @@ punction = '[{0}{1}]'.format(en_punctuation, zh_punctuation)
 ssplict_puncRE = re.compile('[{0}{1}]'.format(en_sent_split_punc, zh_ssplit_punc))
 class KbpDataLoader(xmlHandler):
     def __init__(self, rawtext_path, mention_fname, kbp_id2wikiid_file,
-                 include_unresolved=False, lowercase=False, wiki_id2label=None):
+                 include_unresolved=False, lowercase=False, wiki_map=None):
         super(KbpDataLoader, self).__init__(['mention', 'wikiId'], ['offset', 'length'])
         self._fpath = rawtext_path
         self._m_fname = mention_fname
         self._include_unresolved = include_unresolved
         self.lowercase = lowercase
         self._id2wikiid_file = kbp_id2wikiid_file
-        self._wiki_id2label = wiki_id2label
+        _, self._wiki_id2label = wiki_map
 
     def _processLineSlice(self, line_slice, doc, sent):
         # split words in line slice
@@ -179,11 +179,11 @@ def load_data(text_path=None, mention_file=None, kbp_id2wikiid_file=None, genre=
     assert not isinstance(text_path, type(None)) and not isinstance(text_path, type(None)) \
         and not isinstance(kbp_id2wikiid_file, type(None)), "kbp data requires raw text path, mention file and id2wiki file!"
     print("Loading", text_path)
-    wiki_label2id, wiki_id2label = loadWikiVocab(wiki_entity_file)
+    wiki_map = loadWikiVocab(wiki_entity_file)
     docs = []
     doc_iter = KbpDataLoader(text_path, mention_file, kbp_id2wikiid_file,
                              include_unresolved=include_unresolved, lowercase=lowercase,
-                             wiki_id2label=wiki_id2label)
+                             wiki_map=wiki_map)
     for doc in doc_iter.documents():
         docs.append(doc)
     return docs

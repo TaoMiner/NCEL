@@ -34,11 +34,13 @@ class xmlHandler(object):
                         elem.clear()  # disgrad elem
                     if 'annotation' in path:
                         if elem.tag in self._txt_elem_list:
-                            annotation[elem.tag] = html.unescape(elem.text)
+                            text = elem.text if elem.text is not None else ''
+                            annotation[elem.tag] = html.unescape(text)
                         elif elem.tag in self._int_elem_list:
                             annotation[elem.tag] = int(elem.text)
                         elif elem.tag == 'annotation':
-                            self.annotations.append(annotation)
+                            if min([len(str(annotation[x])) for x in annotation]) > 0:
+                                self.annotations.append(annotation)
                             path.pop()
 
 class kbp10XmlHandler():

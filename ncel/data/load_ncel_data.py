@@ -23,13 +23,13 @@ ssplict_puncRE = re.compile('[{0}{1}]'.format(en_sent_split_punc, zh_ssplit_punc
 
 class NcelDataLoader(xmlHandler):
     def __init__(self, rawtext_path, mention_fname, include_unresolved=False, lowercase=False,
-                 wiki_label2id=None):
+                 wiki_map=None):
         super(NcelDataLoader, self).__init__(['mention', 'wikiID'], ['offset', 'length'])
         self._fpath = rawtext_path
         self._m_fname = mention_fname
         self._include_unresolved = include_unresolved
         self.lowercase = lowercase
-        self._wiki_label2id = wiki_label2id
+        _, self._wiki_id2label = wiki_map
 
     def _processLineSlice(self, line_slice, doc, sent):
         # split words in line slice
@@ -80,12 +80,8 @@ class NcelDataLoader(xmlHandler):
             split_inx = set()
             doc_mentions = all_mentions[doc_name]
             for j, doc_mention in enumerate(doc_mentions):
-                # remove NIL entity
-                if not self._include_unresolved and doc_mention['wikiName'] == 'NIL': continue
-                if doc_mention['wikiName'] != 'NIL' and \
-                    not isinstance(self._wiki_label2id, type(None)) and\
-                      doc_mention['wikiName'] not in self._wiki_label2id : continue
-                wiki_id = self._wiki_label2id.get(doc_mention['wikiName'], 'NIL')
+
+                wiki_label = self._wiki_id2label.get(doc_mention['wikiID'], '')
 
                 doc_start_inx = doc_mention['offset']
                 doc_end_inx = doc_mention['offset'] + doc_mention['length']
@@ -97,7 +93,7 @@ class NcelDataLoader(xmlHandler):
                 end_inx[doc_end_inx].append(j)
                 # [_, _, new_start_offset, new_tokens_num, has_add_to_doc]
 
-                tmp_mentions[j] = [doc_mention['mention'], doc_mention['wikiName'], wiki_id, -1, -1, False]
+                tmp_mentions[j] = [doc_mention['mention'], wiki_label, doc_mention['wikiID'], -1, -1, False]
 
             # skip those don't have any mention
             if len(tmp_mentions) < 1: continue
@@ -163,11 +159,11 @@ def load_data(text_path=None, mention_file=None, kbp_id2wikiid_file=None,
     assert not isinstance(text_path, type(None)) and not isinstance(mention_file, type(None)),\
         "Ncel data requires raw text path and mention file!"
     print("Loading {0}, {1}".format(text_path,mention_file))
-    wiki_label2id, wiki_id2label = loadWikiVocab(wiki_entity_file)
+    wiki_map = loadWikiVocab(wiki_entity_file)
     docs = []
     doc_iter = NcelDataLoader(text_path, mention_file,
                               include_unresolved=include_unresolved, lowercase=lowercase,
-                              wiki_label2id=wiki_label2id)
+                              wiki_map=wiki_map)
     for doc in doc_iter.documents():
         docs.append(doc)
     return docs

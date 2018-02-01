@@ -29,11 +29,11 @@ ssplict_puncRE = re.compile('[{0}{1}]'.format(en_sent_split_punc, zh_ssplit_punc
 
 class XlwikiDataLoader():
     # genre indicates how difficult the mention is, 0 : easy, 1 : hard, 2 : all
-    def __init__(self, path, genre=2, lowercase=False, wiki_label2id=None):
+    def __init__(self, path, genre=2, lowercase=False, wiki_map=None):
         self._fpath = path
         self.lowercase = lowercase
         self.is_hard = genre
-        self._wiki_label2id = wiki_label2id
+        self._wiki_label2id, _ = wiki_map
 
     def _processLineSlice(self, line_slice, doc, sent):
         # split words in line slice
@@ -151,10 +151,10 @@ def load_data(text_path=None, mention_file=None, kbp_id2wikiid_file=None, genre=
               include_unresolved=False, lowercase=False, wiki_entity_file=None):
     assert not isinstance(text_path, type(None)), "xlwiki data requires raw path!"
     print("Loading", text_path)
-    wiki_label2id, wiki_id2label = loadWikiVocab(wiki_entity_file)
+    wiki_map = loadWikiVocab(wiki_entity_file)
     docs = []
     doc_iter = XlwikiDataLoader(text_path, genre=genre,
-                                lowercase=lowercase, wiki_label2id=wiki_label2id)
+                                lowercase=lowercase, wiki_map=wiki_map)
     for doc in doc_iter.documents():
         docs.append(doc)
     return docs

@@ -25,13 +25,13 @@ ssplict_puncRE = re.compile('[{0}{1}]'.format(en_sent_split_punc, zh_ssplit_punc
 
 class WnedDataLoader(xmlHandler):
     def __init__(self, rawtext_path, mention_fname, include_unresolved=False, lowercase=False,
-                 wiki_label2id=None):
+                 wiki_map=None):
         super(WnedDataLoader, self).__init__(['mention', 'wikiName'], ['offset', 'length'])
         self._fpath = rawtext_path
         self._m_fname = mention_fname
         self._include_unresolved = include_unresolved
         self.lowercase = lowercase
-        self._wiki_label2id = wiki_label2id
+        self._wiki_label2id, _ = wiki_map
 
     def _processLineSlice(self, line_slice, doc, sent):
         # split words in line slice
@@ -165,11 +165,11 @@ def load_data(text_path=None, mention_file=None, kbp_id2wikiid_file=None,
     assert not isinstance(text_path, type(None)) and not isinstance(mention_file, type(None)),\
         "wned data requires raw text path and mention file!"
     print("Loading {0}, {1}".format(text_path,mention_file))
-    wiki_label2id, wiki_id2label = loadWikiVocab(wiki_entity_file)
+    wiki_map = loadWikiVocab(wiki_entity_file)
     docs = []
     doc_iter = WnedDataLoader(text_path, mention_file,
                               include_unresolved=include_unresolved, lowercase=lowercase,
-                              wiki_label2id=wiki_label2id)
+                              wiki_map=wiki_map)
     for doc in doc_iter.documents():
         docs.append(doc)
     return docs
