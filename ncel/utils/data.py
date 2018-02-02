@@ -365,6 +365,7 @@ def CropMentionAndCandidates(dataset, max_candidates,
     if topn > 0:
         for i, doc in enumerate(dataset):
             for j, ment in enumerate(doc.mentions):
+                if not ment._is_trainable: continue
                 cand_len = len(ment.candidates)
                 if cand_len > topn:
                     dataset[i].mentions[j].candidates = resortCandidates(ment.candidates,

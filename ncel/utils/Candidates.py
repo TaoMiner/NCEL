@@ -98,7 +98,7 @@ class CandidatesHandler:
 
             candidates[i].setEntityMentionPrior(pem)
             candidates[i].setEntityPrior(self._prior_entity_prob.get(cand.id, DEFAULT_PRIOR))
-        candidates = sorted(candidates, key=lambda x: x.getEntityMentionPrior())
+        candidates = sorted(candidates, key=lambda x: x.getEntityMentionPrior(), reverse=True)
         return candidates
 
     # return an ordered candidates list
@@ -266,11 +266,9 @@ def resortCandidates(candidates, topn=NUM_PRIOR+2, is_eval=False):
         tmp_candidates = sorted(candidates[topn_prior:], key=lambda x: x._mu_context_sim[1], reverse=True)
         new_candidates += tmp_candidates[:topn_sim]
         if not is_eval:
-            gold_candidate = None
             for cand in candidates:
                 if cand.getIsGlod:
-                    gold_candidate = cand
+                    if cand.id not in [c.id for c in new_candidates]:
+                        new_candidates[topn_prior - 1] =cand
                     break
-            if gold_candidate.id not in [c.id for c in new_candidates]:
-                new_candidates[topn_prior-1] = gold_candidate
-    return candidates
+    return new_candidates

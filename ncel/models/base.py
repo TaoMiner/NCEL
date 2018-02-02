@@ -199,7 +199,7 @@ def load_data_and_embeddings(
                                       FLAGS.doc_length,
                                       FLAGS.max_candidates_per_document,
                                       feature_manager,
-                                      topn_candidate=FLAGS.topn,
+                                      topn_candidate=FLAGS.topn_candidate,
                                       is_eval=False,
                                       logger=logger,
                                       include_unresolved=FLAGS.include_unresolved,
@@ -219,7 +219,7 @@ def load_data_and_embeddings(
                                           FLAGS.doc_length,
                                           FLAGS.max_candidates_per_document,
                                           feature_manager,
-                                          topn_candidate=FLAGS.topn,
+                                          topn_candidate=FLAGS.topn_candidate,
                                           is_eval=False,
                                           logger=logger,
                                           include_unresolved=FLAGS.include_unresolved,
@@ -313,7 +313,7 @@ def get_flags():
     gflags.DEFINE_integer("seq_length", 200, "")
     gflags.DEFINE_integer("doc_length", 100, "")
     gflags.DEFINE_integer("max_candidates_per_document", 200, "")
-    gflags.DEFINE_integer("topn", 7, "Use all candidates if set 0.")
+    gflags.DEFINE_integer("topn_candidate", 7, "Use all candidates if set 0.")
 
     # KBP data
     gflags.DEFINE_string(
@@ -414,7 +414,7 @@ def get_flags():
         "Sample transitions at this interval.")
     gflags.DEFINE_integer(
         "early_stopping_steps_to_wait",
-        500,
+        1000,
         "If development set error doesn't improve significantly in this many steps, cease training.")
     gflags.DEFINE_boolean("write_eval_report", False, "")
 
