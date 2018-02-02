@@ -7,16 +7,15 @@ class FeatureGenerator:
     def __init__(self, initial_embeddings, embedding_dim,
                  str_sim=True, prior=True, hasAtt=True,
                  local_context_window=5, global_context_window=5,
-                 use_mu=True, use_embeddings=True, yamada_reader=None):
+                 use_mu=True, use_embeddings=True, ntee_model=None):
         self._has_str_sim = str_sim
         self._has_prior = prior
         self._local_window = local_context_window
         self._global_window = global_context_window
         self._has_att = hasAtt
         (self.word_embeddings, self.entity_embeddings,
-         self.sense_embeddings, self.mu_embeddings,
-         self.yw_embeddings, self.ye_embeddings) = initial_embeddings
-        self.yamada_reader = yamada_reader
+         self.sense_embeddings, self.mu_embeddings) = initial_embeddings
+        self._ntee_model = ntee_model
         self._dim = embedding_dim
         self._use_mu = use_mu
         self._use_embeddings = use_embeddings
@@ -50,12 +49,12 @@ class FeatureGenerator:
                                             split_by_sent=self._split_by_sent)
             if len(left_c) > 0:
                 lc_emb = self.getTokenEmbeds(left_c)
-                if self.yamada_reader is not None:
-                    ylc_emb = self.yamada_reader.get_text_vector(left_c)
+                if self._ntee_model is not None:
+                    ylc_emb = self._ntee_model.get_text_vector(left_c)
             if len(right_c) > 0:
                 rc_emb = self.getTokenEmbeds(right_c)
-                if self.yamada_reader is not None:
-                    yrc_emb = self.yamada_reader.get_text_vector(right_c)
+                if self._ntee_model is not None:
+                    yrc_emb = self._ntee_model.get_text_vector(right_c)
 
         if self._global_window >= 0:
             window = self._global_window if self._global_window > 0 else None
@@ -63,15 +62,15 @@ class FeatureGenerator:
             right_s = mention.right_sent(window)
             if len(left_s) > 0:
                 ls_emb = self.docEmbed(left_s)
-                if self.yamada_reader is not None:
-                    yls_emb = self.yamada_reader.get_text_vector(left_s)
+                if self._ntee_model is not None:
+                    yls_emb = self._ntee_model.get_text_vector(left_s)
             if len(right_s) > 0:
                 rs_emb = self.docEmbed(right_s)
-                if self.yamada_reader is not None:
-                    yrs_emb = self.yamada_reader.get_text_vector(right_s)
+                if self._ntee_model is not None:
+                    yrs_emb = self._ntee_model.get_text_vector(right_s)
         mention.setContextEmb(ylc_emb, yrc_emb, yls_emb, yrs_emb)
         for i, candidate in enumerate(mention.candidates):
-            mention.candidates[i]._yamada_emb = self.ye_embeddings[candidate.id]
+            mention.candidates[i]._yamada_emb = self._ntee_model[candidate.id]
             self.AddCandidateEmbeddingFeatures(mention.candidates[i], lc_emb, rc_emb, ls_emb, rs_emb)
             mention.candidates[i].setContextSimilarity()
 
@@ -199,17 +198,17 @@ class FeatureGenerator:
                 tmp_f = []
                 if self._local_window >= 0:
                     tmp_f.extend(c.getSenseContextSim())
-                    if self.yamada_reader is not None:
+                    if self._ntee_model is not None:
                         tmp_f.extend(c.getYamadaContextSim())
                     if self._use_mu:
                         tmp_f.extend(c.getMuContextSim())
                 if self._global_window >= 0:
                     tmp_f.extend(c.getSenseSentSim())
-                    if self.yamada_reader is not None:
+                    if self._ntee_model is not None:
                         tmp_f.extend(c.getYamadaSentSim())
                     if self._use_mu:
                         tmp_f.extend(c.getMuSentSim())
-                if self._use_embeddings and self.yamada_reader is not None:
+                if self._use_embeddings and self._ntee_model is not None:
                     tmp_context_emb = np.concatenate(c.getYamadaContextEmb(), axis=0)
                     tmp_f = np.concatenate((np.array(tmp_f), c._yamada_emb, tmp_context_emb), axis=0)
                 features.append(tmp_f)

@@ -64,11 +64,18 @@ class NcelDataLoader(xmlHandler):
                 sent.append(rt[dot_idx + 1:])
         return sent
 
+    def getNormDocName(self, doc_name):
+        doc_name = doc_name.replace(' ', '_').replace('?', '_').replace('*', '_').replace('/',
+                      '_').replace('\\', '_').replace('>', '_').replace('<', '_').replace(':',
+                      '_').replace('"', '_').replace('|', '_')
+        return doc_name
+
     def documents(self):
         all_mentions = dict()
         for (doc_name, mentions) in self.process(self._m_fname):
             postfix_inf = doc_name.rfind(r'.')
             doc_name = doc_name if postfix_inf == -1 else doc_name[:postfix_inf]
+            doc_name = self.getNormDocName(doc_name)
             all_mentions[doc_name] = list(mentions)
         i=0
         for (doc_name, doc_lines) in _NcelFileToDocIterator(self._fpath):

@@ -20,7 +20,7 @@ class Token:
 class RegexpTokenizer(object):
     __slots__ = ('_rule',)
 
-    def __init__(self, rule=ur'[\w\d]+'):
+    def __init__(self, rule=r'[\w\d]+'):
         self._rule = re.compile(rule, re.UNICODE)
 
     def tokenize(self, text):

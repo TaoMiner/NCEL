@@ -22,6 +22,7 @@ import torch
 FLAGS = gflags.FLAGS
 
 MAX_CANDIDATES = 30
+YAMADA_DIM = 300
 
 DATA_TYPE = ["conll",
             "kbp10",
@@ -78,12 +79,12 @@ def get_data_manager(data_type):
 
 def get_feature_manager(embeddings, embedding_dim,
                  str_sim=True, prior=True, hasAtt=True,
-                 local_context_window=5, global_context_window=5):
+                 local_context_window=5, global_context_window=5, ntee_model=None):
 
     return FeatureGenerator(embeddings, embedding_dim,
                      str_sim=str_sim, prior=prior, hasAtt=hasAtt,
                  local_context_window=local_context_window,
-                global_context_window=global_context_window)
+                global_context_window=global_context_window, ntee_model=ntee_model)
 
 def unwrapDataset(data_tuples):
     datasets = data_tuples.split(",")
@@ -138,7 +139,7 @@ def load_data_and_embeddings(
         raw_eval_sets.append(extractRawData(data_tuple[0],
                    data_tuple[2], data_tuple[3], data_tuple[1], FLAGS))
 
-    yamada_reader = ModelReader(FLAGS.yamada_model_file) if FLAGS.yamada_model_file is not None else None
+    yamada_reader = ModelReader(FLAGS.yamada_model_file, YAMADA_DIM) if FLAGS.yamada_model_file is not None else None
 
     # Prepare the word and mention vocabulary.
     word_vocab, mention_vocab = BuildVocabulary(
@@ -163,7 +164,7 @@ def load_data_and_embeddings(
 
     entity_vocab = BuildEntityVocabulary(candidate_handler._candidate_entities,
                                          FLAGS.entity_embedding_file, FLAGS.sense_embedding_file,
-                                         yamada_reader=yamada_reader, entity_id2label=id2wiki_vocab, logger=logger)
+                                         yamada_reader=yamada_reader, logger=logger)
 
     # Load pretrained embeddings.
     logger.Log("Loading vocabulary with " + str(len(word_vocab))
@@ -180,25 +181,19 @@ def load_data_and_embeddings(
     sense_embeddings, mu_embeddings = LoadEmbeddingsFromBinary(
         entity_vocab, FLAGS.embedding_dim, FLAGS.sense_embedding_file, isSense=True)
 
-    yw_embeddings = None
-    ye_embeddings = None
     # load yamada embeddings
     if yamada_reader is not None:
-        yw_embeddings = LoadEmbeddingsFromYamada(word_vocab, FLAGS.embedding_dim,
-                                                yamadaReader=yamada_reader)
-        if id2wiki_vocab is not None:
-            ye_embeddings = LoadEmbeddingsFromYamada(entity_vocab, FLAGS.embedding_dim,
-                              vocab_label=id2wiki_vocab, yamadaReader=yamada_reader)
+        logger.Log("Loading yamada model from " + FLAGS.yamada_model_file)
+        yamada_reader.loadModel(word_vocab, entity_vocab)
 
-    initial_embeddings = (word_embeddings, entity_embeddings, sense_embeddings, mu_embeddings,
-                          yw_embeddings, ye_embeddings)
+    initial_embeddings = (word_embeddings, entity_embeddings, sense_embeddings, mu_embeddings)
     vocabulary = (word_vocab, entity_vocab, id2wiki_vocab)
 
     feature_manager = get_feature_manager(initial_embeddings, FLAGS.embedding_dim,
                  str_sim=FLAGS.str_sim, prior=FLAGS.prior, hasAtt=FLAGS.att,
                  local_context_window=FLAGS.local_context_window,
                   global_context_window=FLAGS.global_context_window,
-                   yamada_reader=yamada_reader)
+                   ntee_model=yamada_reader)
 
     # Trim dataset, convert token sequences to integer sequences, crop, and
     # pad. construct data iterator

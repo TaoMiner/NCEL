@@ -101,13 +101,13 @@ def BuildVocabulary(raw_training_data, raw_eval_sets, word_embedding_path,
     word_vocabulary = BuildVocabularyForBinaryEmbeddingFile(
         word_embedding_path, words_in_data, CORE_VOCABULARY)
     if yamada_reader is not None:
-        word_vocabulary = BuildVocabularyFromYamada(word_vocabulary, CORE_VOCABULARY,
-                                                    yamadaReader=yamada_reader)
+        word_vocabulary = BuildVocabularyForBinaryEmbeddingFile(
+            yamada_reader._w2v_file, words_in_data, CORE_VOCABULARY)
 
     return word_vocabulary, mentions_in_data
 
 def BuildEntityVocabulary(candidate_entities, entity_embedding_file, sense_embedding_file,
-                          yamada_reader=None, entity_id2label=None, logger=None):
+                          yamada_reader=None, logger=None):
     # Find the set of words that occur in the data.
     logger.Log("Constructing entity vocabulary...")
 
@@ -120,9 +120,9 @@ def BuildEntityVocabulary(candidate_entities, entity_embedding_file, sense_embed
     # embedding.
     entity_vocabulary = BuildVocabularyForBinaryEmbeddingFile(
         sense_embedding_file, entity_vocabulary, CORE_VOCABULARY, isSense=True)
-    if yamada_reader is not None and entity_id2label is not None:
-        entity_vocabulary = BuildVocabularyFromYamada(entity_vocabulary, CORE_VOCABULARY,
-                            vocab_label=entity_id2label, yamadaReader=yamada_reader)
+    if yamada_reader is not None:
+        entity_vocabulary = BuildVocabularyForBinaryEmbeddingFile(
+            yamada_reader._e2v_file, entity_vocabulary, CORE_VOCABULARY, isSense=False)
 
     return entity_vocabulary
 
@@ -174,39 +174,6 @@ def initVectorFormat(size):
         tmp_struct_fmt.append('f')
     p_struct_fmt = "".join(tmp_struct_fmt)
     return p_struct_fmt
-
-def BuildVocabularyFromYamada(types_in_data, core_vocabulary, vocab_label=None, yamadaReader=None):
-    vocabulary = {}
-    vocabulary.update(core_vocabulary)
-    next_index = len(vocabulary)
-    for item in types_in_data:
-        if vocab_label is not None: item = vocab_label.get(item, None)
-        try:
-            vec = yamadaReader.get_word_vector(item)
-        except KeyError:
-            continue
-        if vec is not None and item not in vocabulary:
-            vocabulary[item] = next_index
-            next_index += 1
-    return vocabulary
-
-# yamada requires vocab_label
-def LoadEmbeddingsFromYamada(vocabulary, embedding_dim, vocab_label=None, yamadaReader=None):
-    loaded = 0
-    emb = np.zeros((len(vocabulary), embedding_dim), dtype=np.float32)
-    for item in vocabulary:
-        if vocab_label is not None: item = vocab_label.get(item, None)
-        try:
-            vec = yamadaReader.get_word_vector(item)
-        except KeyError:
-            continue
-        if vec is not None:
-            if vocab_label is not None:
-                vec = vec / np.linalg.norm(vec, 2)
-            emb[vocabulary[item], :] = vec
-            loaded += 1
-    assert loaded > 0, "No word embeddings of correct size found in file."
-    return emb
 
 def LoadEmbeddingsFromBinary(vocabulary, embedding_dim, path, isSense=False):
     """Prepopulates a numpy embedding matrix indexed by vocabulary with
@@ -508,7 +475,7 @@ def PreprocessDataset(
         include_unresolved=False,
         allow_cropping=False):
 
-    _, entity_embeddings, _, _, _, _ = embeddings
+    _, entity_embeddings, _, _ = embeddings
     word_vocab, entity_vocab, _ = vocabulary
     dataset = TokensToIDs(word_vocab, dataset, stop_words={}, logger=logger)
     # may not trim data by doc length
@@ -645,13 +612,3 @@ def MakeEvalIterator(
         else:
             print("Skipping " + str(len(candidate_batch[0])) + " examples.")
     return data_iter
-
-def MakeCrossIterator(sources,
-                    batch_size,
-                    cross_num,
-                    logger=None):
-
-    skip_eval_num = 0
-
-    def batch_iter(batches):
-        num_batches = len(batches)

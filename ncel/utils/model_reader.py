@@ -1,25 +1,35 @@
 # -*- coding: utf-8 -*-
 
-import joblib
 import numpy as np
 
 from ncel.utils.tokenizer import RegexpTokenizer
+from ncel.utils.data import LoadEmbeddingsFromBinary
 
 
 class ModelReader(object):
-    def __init__(self, model_file):
-        model = joblib.load(model_file, mmap_mode='r')
-        self._word_embedding = model['word_embedding']
-        self._entity_embedding = model['entity_embedding']
-        self._W = model.get('W')
-        self._b = model.get('b')
-        self._vocab = model.get('vocab')
+    def __init__(self, path, dim=300):
+        model_files = path.split(",")
+        assert len(model_files) == 4, print("Error yamada model!")
+        self._w2v_file = model_files[0]
+        self._e2v_file = model_files[1]
+        self._w_file = model_files[2]
+        self._b_file = model_files[3]
+        self._dim = dim
+
+        self._word_embedding = None
+        self._entity_embedding = None
+        self._W = None
+        self._b = None
 
         self._tokenizer = RegexpTokenizer()
 
-    @property
-    def vocab(self):
-        return self._vocab
+    def loadModel(self, word_vocab, entity_vocab):
+        self._word_embedding = LoadEmbeddingsFromBinary(word_vocab, self._dim,
+                                            self._w2v_file, isSense=False)
+        self._entity_embedding = LoadEmbeddingsFromBinary(entity_vocab, self._dim,
+                                            self._e2v_file, isSense=False)
+        self._W = np.load(self._w_file)
+        self._b = np.load(self._b_file)
 
     @property
     def word_embedding(self):
@@ -38,18 +48,10 @@ class ModelReader(object):
         return self._b
 
     def get_word_vector(self, word, default=None):
-        index = self._vocab.get_word_index(word)
-        if index:
-            return self.word_embedding[index]
-        else:
-            return default
+        return self._word_embedding[word] if word in self._word_embedding else default
 
-    def get_entity_vector(self, title, default=None):
-        index = self._vocab.get_entity_index(title)
-        if index:
-            return self.entity_embedding[index]
-        else:
-            return default
+    def get_entity_vector(self, entity, default=None):
+        return self._entity_embedding[entity] if entity in self._entity_embedding else default
 
     def get_text_vector(self, text):
         vectors = [self.get_word_vector(t.text.lower())
