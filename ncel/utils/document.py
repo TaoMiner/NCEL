@@ -28,11 +28,17 @@ class Mention:
         self._gold_foreign_id = None
 
         self.candidates = None
-        self.predicted_sense = None
-        self.predicted_sense_global = None
+
+        self.context_emb = [None] * 4
 
         self._is_trainable = True
         self._is_NIL = is_NIL
+
+    def setContextEmb(self, lc_emb, rc_emb, ls_emb, rs_emb):
+        self.context_emb[0] = lc_emb
+        self.context_emb[1] = rc_emb
+        self.context_emb[2] = ls_emb
+        self.context_emb[3] = rs_emb
 
     def setStrAndLength(self):
         self._mention_str = self.mention_text()

@@ -7,10 +7,11 @@ import gflags
 
 from ncel.data import load_conll_data, load_kbp_data, load_wned_data, load_xlwiki_data, load_ncel_data
 from ncel.utils.data import BuildVocabulary, BuildEntityVocabulary, AddCandidatesToDocs
-from ncel.utils.data import PreprocessDataset, LoadEmbeddingsFromBinary
-from ncel.utils.data import MakeEvalIterator, MakeTrainingIterator, MakeCrossIterator
+from ncel.utils.data import PreprocessDataset, LoadEmbeddingsFromBinary, LoadEmbeddingsFromYamada
+from ncel.utils.data import MakeEvalIterator, MakeTrainingIterator
 from ncel.models.featureGenerator import *
 from ncel.utils.logparse import parse_flags
+from ncel.utils.model_reader import ModelReader
 
 import ncel.models.ncel as ncel
 
@@ -57,6 +58,7 @@ def get_batch(batch):
 
     return x_batch, adj_batch, y_batch, num_candidates, docs
 
+# todo: cropping over length docs when load data, may be not cropped
 def get_data_manager(data_type):
     # Select data format.
     if data_type == "conll":
@@ -136,11 +138,14 @@ def load_data_and_embeddings(
         raw_eval_sets.append(extractRawData(data_tuple[0],
                    data_tuple[2], data_tuple[3], data_tuple[1], FLAGS))
 
+    yamada_reader = ModelReader(FLAGS.yamada_model_file) if FLAGS.yamada_model_file is not None else None
+
     # Prepare the word and mention vocabulary.
     word_vocab, mention_vocab = BuildVocabulary(
         raw_training_data,
         raw_eval_sets,
         FLAGS.word_embedding_file,
+        yamada_reader=yamada_reader,
         logger=logger)
 
     candidate_handler = candidate_manager(FLAGS.candidates_file, vocab=mention_vocab, lowercase=FLAGS.lowercase)
@@ -148,7 +153,7 @@ def load_data_and_embeddings(
 
     logger.Log("Unk mention types rate: {:2.6f}% ({}/{}), average candidates: {:2.6f}% ({}/{}) from {}!".format(
         (len(mention_vocab)-len(candidate_handler._mention_dict))*100/float(len(mention_vocab)),
-         len(candidate_handler._mention_dict), len(mention_vocab), candidate_handler._candidates_total/float(len(candidate_handler._mention_dict)),
+        len(mention_vocab) - len(candidate_handler._mention_dict), len(mention_vocab), candidate_handler._candidates_total/float(len(candidate_handler._mention_dict)),
          candidate_handler._candidates_total, len(candidate_handler._mention_dict), FLAGS.candidates_file))
 
     candidate_handler.loadPrior(FLAGS.entity_prior_file, mention_vocab=candidate_handler._mention_dict,
@@ -158,7 +163,7 @@ def load_data_and_embeddings(
 
     entity_vocab = BuildEntityVocabulary(candidate_handler._candidate_entities,
                                          FLAGS.entity_embedding_file, FLAGS.sense_embedding_file,
-                                            logger=logger)
+                                         yamada_reader=yamada_reader, entity_id2label=id2wiki_vocab, logger=logger)
 
     # Load pretrained embeddings.
     logger.Log("Loading vocabulary with " + str(len(word_vocab))
@@ -175,13 +180,25 @@ def load_data_and_embeddings(
     sense_embeddings, mu_embeddings = LoadEmbeddingsFromBinary(
         entity_vocab, FLAGS.embedding_dim, FLAGS.sense_embedding_file, isSense=True)
 
-    initial_embeddings = (word_embeddings, entity_embeddings, sense_embeddings, mu_embeddings)
+    yw_embeddings = None
+    ye_embeddings = None
+    # load yamada embeddings
+    if yamada_reader is not None:
+        yw_embeddings = LoadEmbeddingsFromYamada(word_vocab, FLAGS.embedding_dim,
+                                                yamadaReader=yamada_reader)
+        if id2wiki_vocab is not None:
+            ye_embeddings = LoadEmbeddingsFromYamada(entity_vocab, FLAGS.embedding_dim,
+                              vocab_label=id2wiki_vocab, yamadaReader=yamada_reader)
+
+    initial_embeddings = (word_embeddings, entity_embeddings, sense_embeddings, mu_embeddings,
+                          yw_embeddings, ye_embeddings)
     vocabulary = (word_vocab, entity_vocab, id2wiki_vocab)
 
     feature_manager = get_feature_manager(initial_embeddings, FLAGS.embedding_dim,
                  str_sim=FLAGS.str_sim, prior=FLAGS.prior, hasAtt=FLAGS.att,
                  local_context_window=FLAGS.local_context_window,
-                  global_context_window=FLAGS.global_context_window)
+                  global_context_window=FLAGS.global_context_window,
+                   yamada_reader=yamada_reader)
 
     # Trim dataset, convert token sequences to integer sequences, crop, and
     # pad. construct data iterator
@@ -305,6 +322,8 @@ def get_flags():
     gflags.DEFINE_string("word_embedding_file", None, "")
     gflags.DEFINE_string("entity_embedding_file", None, "")
     gflags.DEFINE_string("sense_embedding_file", None, "")
+    # yamada embeddings
+    gflags.DEFINE_string("yamada_model_file", None, "")
 
     gflags.DEFINE_boolean(
         "allow_cropping",

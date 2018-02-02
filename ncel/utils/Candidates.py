@@ -159,7 +159,9 @@ class Candidate():
 
         self._sense_context_sim = [DEFAULT_PRIOR] * 4
         self._mu_context_sim = [DEFAULT_PRIOR] * 4
+        self._yamada_context_sim = [DEFAULT_PRIOR] * 4
         # contextual
+        self._yamada_emb = None
         self._sense_emb = None
         self._sense_mu_emb = None
         self._context_emb = [None] * 4
@@ -170,13 +172,17 @@ class Candidate():
 
     def setContextSimilarity(self):
         if self._sense_emb is not None:
-            for i in range(len(self._sense_context_sim)):
+            for i in range(len(self._context_emb)):
                 if self._context_emb[i] is None : continue
                 self._sense_context_sim[i] = cosSim(self._sense_emb, self._context_emb[i])
         if self._sense_mu_emb is not None:
-            for i in range(len(self._mu_context_sim)):
+            for i in range(len(self._context_mu_emb)):
                 if self._context_mu_emb[i] is None : continue
                 self._mu_context_sim[i] = cosSim(self._sense_mu_emb, self._context_mu_emb[i])
+        if self._yamada_emb is not None:
+            for i in range(len(self._mention.context_emb)):
+                if self._mention.context_emb[i] is None : continue
+                self._yamada_context_sim[i] = cosSim(self._yamada_emb, self._mention.context_emb[i])
 
     def setSenseEmbeddings(self, emb):
         self._sense_emb = emb
@@ -235,6 +241,12 @@ class Candidate():
     def getMuContextSim(self):
         return self._mu_context_sim[:2]
 
+    def getYamadaContextSim(self):
+        return self._yamada_context_sim[:2]
+
+    def getYamadaSentSim(self):
+        return self._yamada_context_sim[2:]
+
     def getSenseSentSim(self):
         return self._sense_context_sim[2:]
 
@@ -252,6 +264,9 @@ class Candidate():
 
     def getMuSentEmb(self):
         return self._context_mu_emb[2:]
+
+    def getYamadaContextEmb(self):
+        return self._mention.context_emb[:2]
 
 
 NUM_PRIOR = 5

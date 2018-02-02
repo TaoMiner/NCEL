@@ -72,7 +72,8 @@ def AddCandidatesToDocs(dataset, candidate_handler, vocab=None, topn=0, is_eval=
         logger.Log("Add candidates success: totally {} candidates of {} mentions in {} documents!".format(
             sum([doc.n_candidates for doc in dataset]), sum([len(doc.mentions) for doc in dataset]), len(dataset)))
 
-def BuildVocabulary(raw_training_data, raw_eval_sets, word_embedding_path, logger=None):
+def BuildVocabulary(raw_training_data, raw_eval_sets, word_embedding_path,
+                    yamada_reader=None, logger=None):
     # Find the set of words that occur in the data.
     logger.Log("Constructing vocabulary...")
 
@@ -99,21 +100,29 @@ def BuildVocabulary(raw_training_data, raw_eval_sets, word_embedding_path, logge
     # embedding.
     word_vocabulary = BuildVocabularyForBinaryEmbeddingFile(
         word_embedding_path, words_in_data, CORE_VOCABULARY)
+    if yamada_reader is not None:
+        word_vocabulary = BuildVocabularyFromYamada(word_vocabulary, CORE_VOCABULARY,
+                                                    yamadaReader=yamada_reader)
 
     return word_vocabulary, mentions_in_data
 
-def BuildEntityVocabulary(candidate_entities, entity_embedding_file, sense_embedding_file, logger=None):
+def BuildEntityVocabulary(candidate_entities, entity_embedding_file, sense_embedding_file,
+                          yamada_reader=None, entity_id2label=None, logger=None):
     # Find the set of words that occur in the data.
     logger.Log("Constructing entity vocabulary...")
 
     logger.Log("Found " + str(len(candidate_entities)) + " entity types.")
 
+    entity_vocabulary = BuildVocabularyForBinaryEmbeddingFile(
+        entity_embedding_file, candidate_entities, CORE_VOCABULARY)
+
     # Build a vocabulary of entities in the data for which we have an
     # embedding.
     entity_vocabulary = BuildVocabularyForBinaryEmbeddingFile(
-        entity_embedding_file, candidate_entities, CORE_VOCABULARY)
-    entity_vocabulary = BuildVocabularyForBinaryEmbeddingFile(
         sense_embedding_file, entity_vocabulary, CORE_VOCABULARY, isSense=True)
+    if yamada_reader is not None and entity_id2label is not None:
+        entity_vocabulary = BuildVocabularyFromYamada(entity_vocabulary, CORE_VOCABULARY,
+                            vocab_label=entity_id2label, yamadaReader=yamada_reader)
 
     return entity_vocabulary
 
@@ -165,6 +174,39 @@ def initVectorFormat(size):
         tmp_struct_fmt.append('f')
     p_struct_fmt = "".join(tmp_struct_fmt)
     return p_struct_fmt
+
+def BuildVocabularyFromYamada(types_in_data, core_vocabulary, vocab_label=None, yamadaReader=None):
+    vocabulary = {}
+    vocabulary.update(core_vocabulary)
+    next_index = len(vocabulary)
+    for item in types_in_data:
+        if vocab_label is not None: item = vocab_label.get(item, None)
+        try:
+            vec = yamadaReader.get_word_vector(item)
+        except KeyError:
+            continue
+        if vec is not None and item not in vocabulary:
+            vocabulary[item] = next_index
+            next_index += 1
+    return vocabulary
+
+# yamada requires vocab_label
+def LoadEmbeddingsFromYamada(vocabulary, embedding_dim, vocab_label=None, yamadaReader=None):
+    loaded = 0
+    emb = np.zeros((len(vocabulary), embedding_dim), dtype=np.float32)
+    for item in vocabulary:
+        if vocab_label is not None: item = vocab_label.get(item, None)
+        try:
+            vec = yamadaReader.get_word_vector(item)
+        except KeyError:
+            continue
+        if vec is not None:
+            if vocab_label is not None:
+                vec = vec / np.linalg.norm(vec, 2)
+            emb[vocabulary[item], :] = vec
+            loaded += 1
+    assert loaded > 0, "No word embeddings of correct size found in file."
+    return emb
 
 def LoadEmbeddingsFromBinary(vocabulary, embedding_dim, path, isSense=False):
     """Prepopulates a numpy embedding matrix indexed by vocabulary with
@@ -219,6 +261,7 @@ def LoadEmbeddingsFromBinary(vocabulary, embedding_dim, path, isSense=False):
         return emb
 
 # preprocess raw data
+# todo: may be not to trim dataset
 def TrimDataset(dataset, seq_length, doc_length, logger=None):
     """Avoid using excessively long training examples."""
     # disgard over length sentence and document
@@ -465,9 +508,10 @@ def PreprocessDataset(
         include_unresolved=False,
         allow_cropping=False):
 
-    _, entity_embeddings, _, _ = embeddings
+    _, entity_embeddings, _, _, _, _ = embeddings
     word_vocab, entity_vocab, _ = vocabulary
     dataset = TokensToIDs(word_vocab, dataset, stop_words={}, logger=logger)
+    # may not trim data by doc length
     dataset = TrimDataset(dataset, seq_length, doc_length, logger=logger)
     dataset = EntityToIDs(entity_vocab, dataset,
                           include_unresolved=include_unresolved, logger=logger)
