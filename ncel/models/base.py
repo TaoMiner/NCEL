@@ -7,7 +7,7 @@ import gflags
 
 from ncel.data import load_conll_data, load_kbp_data, load_wned_data, load_xlwiki_data, load_ncel_data
 from ncel.utils.data import BuildVocabulary, BuildEntityVocabulary, AddCandidatesToDocs
-from ncel.utils.data import PreprocessDataset, LoadEmbeddingsFromBinary, LoadEmbeddingsFromYamada
+from ncel.utils.data import PreprocessDataset, LoadEmbeddingsFromBinary
 from ncel.utils.data import MakeEvalIterator, MakeTrainingIterator
 from ncel.models.featureGenerator import *
 from ncel.utils.logparse import parse_flags

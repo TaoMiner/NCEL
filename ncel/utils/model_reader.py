@@ -54,8 +54,7 @@ class ModelReader(object):
         return self._entity_embedding[entity] if entity in self._entity_embedding else default
 
     def get_text_vector(self, text):
-        vectors = [self.get_word_vector(t.text.lower())
-                   for t in self._tokenizer.tokenize(text)]
+        vectors = [self.get_word_vector(t) for t in text]
         vectors = [v for v in vectors if v is not None]
         if not vectors:
             return None
