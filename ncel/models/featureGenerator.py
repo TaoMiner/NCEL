@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import numba
 import numpy as np
 from pyxdameraulevenshtein import normalized_damerau_levenshtein_distance
 from ncel.utils.layers import cosSim
@@ -26,6 +27,11 @@ class FeatureGenerator:
             self._split_by_sent = True
         self._feature_dim = None
 
+    # batch * tokens
+    def padTokens(self, sents, PAD=0):
+        max_len = max([len(s) for s in sents])
+        return ([s+[PAD]*(max_len-len(s)) for s in sents])
+
     def AddEmbeddingFeatures(self, dataset):
         for i, doc in enumerate(dataset):
             for j, mention in enumerate(doc.mentions):
@@ -39,8 +45,6 @@ class FeatureGenerator:
         rs_emb = None
         ylc_emb = None
         yrc_emb = None
-        yls_emb = None
-        yrs_emb = None
         if self._local_window >= 0:
             window = self._local_window if self._local_window > 0 else None
             left_c = mention.left_context(max_len=window,
@@ -50,11 +54,11 @@ class FeatureGenerator:
             if len(left_c) > 0:
                 lc_emb = self.getTokenEmbeds(left_c)
                 if self._ntee_model is not None:
-                    ylc_emb = self._ntee_model.get_text_vector(left_c)
+                    ylc_emb = self._ntee_model.get_text_vector(self._ntee_model.get_text_array(left_c))
             if len(right_c) > 0:
                 rc_emb = self.getTokenEmbeds(right_c)
                 if self._ntee_model is not None:
-                    yrc_emb = self._ntee_model.get_text_vector(right_c)
+                    yrc_emb = self._ntee_model.get_text_vector(self._ntee_model.get_text_array(right_c))
 
         if self._global_window >= 0:
             window = self._global_window if self._global_window > 0 else None
@@ -62,17 +66,15 @@ class FeatureGenerator:
             right_s = mention.right_sent(window)
             if len(left_s) > 0:
                 ls_emb = self.docEmbed(left_s)
-                if self._ntee_model is not None:
-                    yls_emb = self._ntee_model.get_text_vector(left_s)
             if len(right_s) > 0:
                 rs_emb = self.docEmbed(right_s)
-                if self._ntee_model is not None:
-                    yrs_emb = self._ntee_model.get_text_vector(right_s)
-        mention.setContextEmb(ylc_emb, yrc_emb, yls_emb, yrs_emb)
+        mention.setContextEmb(ylc_emb, yrc_emb)
         for i, candidate in enumerate(mention.candidates):
             mention.candidates[i]._yamada_emb = self._ntee_model.get_entity_vector(candidate.id)
             self.AddCandidateEmbeddingFeatures(mention.candidates[i], lc_emb, rc_emb, ls_emb, rs_emb)
             mention.candidates[i].setContextSimilarity()
+            if self._ntee_model is not None:
+                mention.candidates[i].setYamadaSimilarity()
 
     def AddCandidateEmbeddingFeatures(self, candidate, left_context_embeddings, right_context_embeddings,
                              left_sent_embeddings, right_sent_embeddings):
@@ -153,33 +155,30 @@ class FeatureGenerator:
 
         return features
 
+    @numba.autojit
     def getSeqEmbeddings(self, sent_embeds, query_emb=None):
-        if len(sent_embeds.shape) > 1:
-            if query_emb is not None:
-                att = np.dot(sent_embeds, query_emb.transpose())
-            else:
-                att = np.ones(sent_embeds.shape[0])
-            embeds = np.dot(att.transpose(), sent_embeds)
+        if query_emb is None:
+            embeds = np.mean(sent_embeds, axis=0)
         else:
-            embeds = sent_embeds
+            att = np.dot(query_emb, sent_embeds.transpose())
+            embeds = np.dot(att, sent_embeds)
         return embeds
 
     def getTokenEmbeds(self, tokens):
         return self.word_embeddings.take(np.array(tokens).ravel(), axis=0)
 
-    def sentEmbed(self, sent_tokens, weights=None):
-        embeds = self.getTokenEmbeds(sent_tokens)
-        embeds = np.reshape(embeds, (-1, self._dim))
-        sent_embed = np.zeros(self._dim)
-        if isinstance(weights, type(None)) or len(weights)!=len(sent_tokens):
-            weights = np.ones(len(sent_tokens))
-        for i,embed in enumerate(embeds):
-            sent_embed += weights[i]*embed
-        return sent_embed
-
     def docEmbed(self, sents):
-        embeds = np.array([self.sentEmbed(x) for x in sents if len(x)>0])
-        return embeds
+        sents_embed = []
+        for s in sents:
+            if len(s) > 0:
+                embeds_array = self.getTokenEmbeds(s)
+                embeds_array = np.reshape(embeds_array, (-1, self._dim))
+                embeds = self.getSeqEmbeddings(embeds_array)
+                sents_embed.append(embeds)
+        doc_embeds = None
+        if len(sents_embed) > 0:
+            doc_embeds = np.array(sents_embed)
+        return doc_embeds
 
     def getCandidateAndGoldIds(self, doc):
         # cand_id: mention_index
@@ -191,6 +190,7 @@ class FeatureGenerator:
                 gold_ids.append(1 if c.getIsGlod() else 0)
         return np.array(gold_ids), np.array(candidate_ids)
 
+    # todo: yamada embedding may be empty
     def getContextFeature(self, doc):
         features = []
         for m in doc.mentions:
@@ -204,8 +204,6 @@ class FeatureGenerator:
                         tmp_f.extend(c.getMuContextSim())
                 if self._global_window >= 0:
                     tmp_f.extend(c.getSenseSentSim())
-                    if self._ntee_model is not None:
-                        tmp_f.extend(c.getYamadaSentSim())
                     if self._use_mu:
                         tmp_f.extend(c.getMuSentSim())
                 if self._use_embeddings and self._ntee_model is not None:

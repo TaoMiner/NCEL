@@ -11,6 +11,7 @@ import torch.nn as nn
 from torch.nn.init import kaiming_normal, uniform
 
 import numpy as np
+import numba
 
 def the_gpu():
     return the_gpu.gpu
@@ -383,6 +384,7 @@ class Embed(nn.Module):
                     volatile=tokens.volatile))
         return embeds
 
+@numba.autojit
 def cosSim(v1, v2):
     res = 0
     len_v1 = math.sqrt(np.dot(v1, v1))
@@ -414,6 +416,19 @@ def buildGraph(ids, embeddings, thred=0):
     adj = normalize(adj)
     return adj
 
+# input all candidates in one document, return one graph much like self attention
+@numba.autojit
+def buildFullGraph(ids, embeddings, thred=0):
+    node_num = ids.shape[0]
+    # node * dim
+    embeds = embeddings.take(np.array([cid[0] for cid in ids]).ravel(), axis=0)
+
+    adj = np.dot(embeds, embeds.transpose())
+    adj[ adj<thred ] = 0
+    adj = normalize(adj)
+    return adj
+
+@numba.autojit
 def normalize(mx):
     """Row-normalize sparse matrix"""
     rowsum = np.array(mx.sum(1))

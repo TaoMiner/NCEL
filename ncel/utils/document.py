@@ -29,16 +29,14 @@ class Mention:
 
         self.candidates = None
 
-        self.context_emb = [None] * 4
+        self.context_emb = [None] * 2
 
         self._is_trainable = True
         self._is_NIL = is_NIL
 
-    def setContextEmb(self, lc_emb, rc_emb, ls_emb, rs_emb):
+    def setContextEmb(self, lc_emb, rc_emb):
         self.context_emb[0] = lc_emb
         self.context_emb[1] = rc_emb
-        self.context_emb[2] = ls_emb
-        self.context_emb[3] = rs_emb
 
     def setStrAndLength(self):
         self._mention_str = self.mention_text()
