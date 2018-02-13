@@ -12,6 +12,7 @@ from ncel.utils.data import MakeEvalIterator, MakeTrainingIterator
 from ncel.models.featureGenerator import *
 from ncel.utils.logparse import parse_flags
 from ncel.utils.model_reader import ModelReader
+from ncel.utils.misc import loadWikiVocab
 
 import ncel.models.ncel as ncel
 
@@ -149,7 +150,10 @@ def load_data_and_embeddings(
         yamada_reader=yamada_reader,
         logger=logger)
 
-    candidate_handler = candidate_manager(FLAGS.candidates_file, vocab=mention_vocab, lowercase=FLAGS.lowercase)
+    wiki2id_vocab, id2wiki_vocab = loadWikiVocab(FLAGS.wiki_entity_vocab)
+
+    candidate_handler = candidate_manager(FLAGS.candidates_file, vocab=mention_vocab,
+                          lowercase=FLAGS.lowercase, id2label=id2wiki_vocab, label2id=wiki2id_vocab)
     candidate_handler.loadCandidates()
 
     logger.Log("Unk mention types rate: {:2.6f}% ({}/{}), average candidates: {:2.6f}% ({}/{}) from {}!".format(
@@ -157,12 +161,7 @@ def load_data_and_embeddings(
         len(mention_vocab) - len(candidate_handler._mention_dict), len(mention_vocab), candidate_handler._candidates_total/float(len(candidate_handler._mention_dict)),
          candidate_handler._candidates_total, len(candidate_handler._mention_dict), FLAGS.candidates_file))
 
-    candidate_handler.loadPrior(FLAGS.entity_prior_file, mention_vocab=candidate_handler._mention_dict,
-                                entity_vocab=candidate_handler._candidate_entities)
-    id2wiki_vocab = candidate_handler.loadWikiid2Label(FLAGS.wiki_entity_vocab,
-                                       id_vocab=candidate_handler._candidate_entities)
-
-    entity_vocab = BuildEntityVocabulary(candidate_handler._candidate_entities,
+    entity_vocab = BuildEntityVocabulary(candidate_handler._entity_set,
                                          FLAGS.entity_embedding_file, FLAGS.sense_embedding_file,
                                          yamada_reader=yamada_reader, logger=logger)
 
@@ -202,7 +201,7 @@ def load_data_and_embeddings(
     for i, raw_eval_data in enumerate(raw_eval_sets):
         logger.Log("Processing {} raw eval data ...".format(i))
         AddCandidatesToDocs(raw_eval_sets[i], candidate_handler, topn=MAX_CANDIDATES,
-                            vocab=entity_vocab, is_eval=True, logger=logger,
+                            vocab=entity_vocab, logger=logger,
                             include_unresolved=FLAGS.include_unresolved)
         eval_data = PreprocessDataset(raw_eval_sets[i],
                                       vocabulary,
@@ -222,7 +221,7 @@ def load_data_and_embeddings(
     if raw_training_data is not None:
         logger.Log("Processing raw training data ...")
         AddCandidatesToDocs(raw_training_data, candidate_handler, topn=MAX_CANDIDATES,
-                            vocab=entity_vocab, is_eval=False, logger=logger,
+                            vocab=entity_vocab, logger=logger,
                             include_unresolved=FLAGS.include_unresolved)
         training_data = PreprocessDataset(raw_training_data,
                                           vocabulary,
@@ -310,9 +309,8 @@ def get_flags():
 
     gflags.DEFINE_string(
         "candidates_file", None, "Each line contains mention-entities pair, separated by tab. "
+                                 "type:file, type in ['ppr','wiki','dictionary','yago']"
                                  "use ',' to separate multiple eval data.")
-    gflags.DEFINE_string(
-        "entity_prior_file", None, "line: enti_id tab gobal_prior tab cand_ment::=count tab ...")
     gflags.DEFINE_string("wiki_entity_vocab", None, "line: entity_label \t entity_id")
     gflags.DEFINE_string("word_embedding_file", None, "")
     gflags.DEFINE_string("entity_embedding_file", None, "")

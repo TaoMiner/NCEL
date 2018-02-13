@@ -13,14 +13,17 @@ class Mention:
     def __init__(self, document, mention_start, mention_end, gold_ent_id=None,
                  gold_ent_str=None, is_NIL = False):
         self._document = document
+        # document token position
         self._mention_start = mention_start
         self._mention_end = mention_end
+
         self._gold_ent_id = gold_ent_id
         self._gold_ent_str = gold_ent_str
 
         self._mention_length = None
         self._mention_str = None
 
+        # document sentences positon
         self._sent_idx = None
         self._pos_in_sent = None
 

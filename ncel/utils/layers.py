@@ -398,6 +398,7 @@ def cosSim(v1, v2):
     return res
 
 # input all candidates in one document, return one graph much like self attention
+# todo: no mention group split
 def buildGraph(ids, embeddings, thred=0):
     node_num = ids.shape[0]
     adj = np.zeros((node_num, node_num))

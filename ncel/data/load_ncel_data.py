@@ -5,6 +5,8 @@ from ncel.utils.misc import loadWikiVocab
 import os
 import re
 
+MAX_DOCS = 40000
+
 def _NcelFileToDocIterator(fpath):
     files = os.listdir(fpath)
     for fname in files:
@@ -80,6 +82,7 @@ class NcelDataLoader(xmlHandler):
         i=0
         for (doc_name, doc_lines) in _NcelFileToDocIterator(self._fpath):
             if doc_name not in all_mentions : continue
+            if i > MAX_DOCS : break
             # create doc mention offset index list
             start_inx = dict()
             end_inx = dict()

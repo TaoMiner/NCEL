@@ -55,11 +55,10 @@ class SimpleProgressBar(object):
         self.reset()
         sys.stdout.write('\n')
 
-def AddCandidatesToDocs(dataset, candidate_handler, vocab=None, topn=0, is_eval=False,
+def AddCandidatesToDocs(dataset, candidate_handler, vocab=None, topn=0,
                         include_unresolved=False, logger=None):
     for i, doc in enumerate(dataset):
-        candidate_handler.add_candidates_to_document(dataset[i],
-                                                     vocab=vocab, is_eval=is_eval, topn=topn)
+        candidate_handler.add_candidates_to_document(dataset[i], vocab=vocab,topn=topn)
     '''
         # filter out those add candidates failed!
         for j, mention in enumerate(doc.mentions):
@@ -369,8 +368,7 @@ def EntityToIDs(entity_vocabulary, dataset, include_unresolved=False, logger=Non
     return dataset
 
 # todo: cropped those mention with no gold candidates
-def CropMentionAndCandidates(dataset, max_candidates,
-                             topn=0, is_eval=False, allow_cropping=True, logger=None):
+def CropMentionAndCandidates(dataset, max_candidates, topn=0, allow_cropping=True, logger=None):
     # crop mention candidates according to topn
     if topn > 0:
         for i, doc in enumerate(dataset):
@@ -378,9 +376,13 @@ def CropMentionAndCandidates(dataset, max_candidates,
                 if not ment._is_trainable: continue
                 cand_len = len(ment.candidates)
                 if cand_len > topn:
-                    dataset[i].mentions[j].candidates = resortCandidates(ment.candidates,
-                                                             topn=topn, is_eval=is_eval)
-                    dataset[i].n_candidates -= (cand_len-topn)
+                    cropped_candidates = resortCandidates(ment.candidates, topn=topn)
+                    if ment.gold_ent_id() not in [c.id for c in cropped_candidates]:
+                        dataset[i].mentions[j]._is_trainable = False
+                        dataset[i].n_candidates -= cand_len
+                    else:
+                        dataset[i].mentions[j].candidates = cropped_candidates
+                        dataset[i].n_candidates -= (cand_len-topn)
     raw_doc_num = len(dataset)
     # over mention-candidate_pairs size that may be cropped
     cropped_dataset = [doc for doc in dataset if doc.n_candidates <= max_candidates]
@@ -483,8 +485,7 @@ def PreprocessDataset(
     dataset = EntityToIDs(entity_vocab, dataset,
                           include_unresolved=include_unresolved, logger=logger)
     feature_manager.AddEmbeddingFeatures(dataset)
-    dataset = CropMentionAndCandidates(dataset, max_candidates,
-                                       topn=topn_candidate, is_eval=is_eval, logger=logger)
+    dataset = CropMentionAndCandidates(dataset, max_candidates, topn=topn_candidate, logger=logger)
     # inspectDoc(dataset[0], word_vocab=word_vocabulary)
     X = []
     Y = []
@@ -495,7 +496,7 @@ def PreprocessDataset(
         num_candidate = y.shape[0]
         adj = buildGraph(candidate_ids, entity_embeddings)
         # x: doc.n_candidates * feature_dim
-        # candidate_ids: doc.n_candidates * [id:mention_index]
+        # candidate_ids: doc.n_candidates
         # y: doc.n_candidates
         x, adj, y = PadDocument(x, adj, y, max_candidates, allow_cropping=allow_cropping)
         X.append(x)

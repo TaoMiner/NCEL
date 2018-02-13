@@ -70,10 +70,10 @@ class FeatureGenerator:
                 rs_emb = self.docEmbed(right_s)
         mention.setContextEmb(ylc_emb, yrc_emb)
         for i, candidate in enumerate(mention.candidates):
-            mention.candidates[i]._yamada_emb = self._ntee_model.get_entity_vector(candidate.id)
             self.AddCandidateEmbeddingFeatures(mention.candidates[i], lc_emb, rc_emb, ls_emb, rs_emb)
             mention.candidates[i].setContextSimilarity()
             if self._ntee_model is not None:
+                mention.candidates[i]._yamada_emb = self._ntee_model.get_entity_vector(candidate.id)
                 mention.candidates[i].setYamadaSimilarity()
 
     def AddCandidateEmbeddingFeatures(self, candidate, left_context_embeddings, right_context_embeddings,
@@ -151,7 +151,7 @@ class FeatureGenerator:
         # prior
         if self._has_prior:
             # entity prior
-            features.extend([candidate.getEntityPrior(), candidate.getEntityMentionPrior()])
+            features.append(candidate.getEntityMentionPrior())
 
         return features
 
@@ -206,12 +206,9 @@ class FeatureGenerator:
                     tmp_f.extend(c.getSenseSentSim())
                     if self._use_mu:
                         tmp_f.extend(c.getMuSentSim())
-                if self._use_embeddings and self._ntee_model is not None:
-                    tmp_emb = [e if e is not None else np.zeros(self._ntee_model._dim)
-                               for e in c.getYamadaContextEmb()]
-                    tmp_context_emb = np.concatenate(tmp_emb, axis=0)
-                    tmp_f = np.concatenate((np.array(tmp_f), c._yamada_emb if c._yamada_emb is not None
-                                        else np.zeros(self._ntee_model._dim), tmp_context_emb), axis=0)
+                if self._use_embeddings :
+                    tmp_context_emb = np.concatenate(c.getContextEmb(), axis=0)
+                    tmp_f = np.concatenate((np.array(tmp_f), c._sense_emb, tmp_context_emb), axis=0)
                 features.append(tmp_f)
         return np.array(features)
 
