@@ -112,6 +112,17 @@ def loadWikiVocab(filename, id_vocab=None):
             id2label_map[items[0]] = items[1]
     return label2id_map, id2label_map
 
+# redirect_id \t ent_id
+def loadRedirectVocab(filename, id_vocab=None):
+    redirectid_map = {}
+    with open(filename, 'r', encoding='UTF-8') as fin:
+        for line in fin:
+            items = re.split(r'\t', line.strip())
+            if len(items) < 2 or len(items[0].strip()) < 1 or len(items[1].strip()) < 1 or\
+                    (not isinstance(id_vocab, type(None)) and items[0] not in id_vocab): continue
+            redirectid_map[items[0]] = items[1]
+    return redirectid_map
+
 def inspectDoc(doc, word_vocab=None):
     if not isinstance(word_vocab, type(None)):
         word_label_vocab = dict(

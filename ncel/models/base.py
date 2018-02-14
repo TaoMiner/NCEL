@@ -4,6 +4,7 @@ import os
 import time
 
 import gflags
+import re
 
 from ncel.data import load_conll_data, load_kbp_data, load_wned_data, load_xlwiki_data, load_ncel_data
 from ncel.utils.data import BuildVocabulary, BuildEntityVocabulary, AddCandidatesToDocs
@@ -12,7 +13,7 @@ from ncel.utils.data import MakeEvalIterator, MakeTrainingIterator
 from ncel.models.featureGenerator import *
 from ncel.utils.logparse import parse_flags
 from ncel.utils.model_reader import ModelReader
-from ncel.utils.misc import loadWikiVocab
+from ncel.utils.misc import loadWikiVocab, loadRedirectVocab
 
 import ncel.models.ncel as ncel
 
@@ -22,7 +23,7 @@ import torch
 
 FLAGS = gflags.FLAGS
 
-MAX_CANDIDATES = 30
+MAX_CANDIDATES = 0
 YAMADA_DIM = 300
 
 DATA_TYPE = ["conll",
@@ -107,6 +108,7 @@ def extractRawData(data_type, text_path, mention_file, genre, FLAGS):
                 kbp_id2wikiid_file=FLAGS.kbp2wikiId_file, genre=genre,
                 include_unresolved=FLAGS.include_unresolved, lowercase=FLAGS.lowercase,
                 wiki_entity_file=FLAGS.wiki_entity_vocab)
+
     return raw_data
 
 def load_data_and_embeddings(
@@ -125,11 +127,13 @@ def load_data_and_embeddings(
 
     # must cross_validation
     # wned only one eval [path, file]
+    dataset_types = set()
     raw_training_data = None
     if not FLAGS.eval_only_mode:
         raw_training_data = []
         unwraped_data_tuples = unwrapDataset(FLAGS.training_data)
         for data_tuple in unwraped_data_tuples:
+            dataset_types.add(data_tuple[0])
             raw_training_data.extend(extractRawData(data_tuple[0],
                       data_tuple[2], data_tuple[3], data_tuple[1], FLAGS))
 
@@ -137,8 +141,31 @@ def load_data_and_embeddings(
     raw_eval_sets = []
     unwraped_data_tuples = unwrapDataset(FLAGS.eval_data)
     for data_tuple in unwraped_data_tuples:
+        dataset_types.add(data_tuple[0])
         raw_eval_sets.append(extractRawData(data_tuple[0],
                    data_tuple[2], data_tuple[3], data_tuple[1], FLAGS))
+
+    # replace mention gold id in redirect to entity id
+    redirect_vocab = None
+    if FLAGS.wiki_redirect_vocab is not None:
+        gold_id_set = set()
+        if raw_training_data is not None:
+            gold_id_set.update([m.gold_ent_id() for doc in raw_training_data
+                                for m in doc.mentions if m.gold_ent_id() is not None])
+        for eval_data in raw_eval_sets:
+            gold_id_set.update([m.gold_ent_id() for doc in eval_data
+                                for m in doc.mentions if m.gold_ent_id() is not None])
+        redirect_vocab = loadRedirectVocab(FLAGS.wiki_redirect_vocab, id_vocab=gold_id_set)
+        if raw_training_data is not None:
+            for i, doc in enumerate(raw_training_data):
+                for j, mention in enumerate(doc.mentions):
+                    if mention.gold_ent_id() in redirect_vocab:
+                        raw_training_data[i].mentions[j]._gold_ent_id = redirect_vocab[mention.gold_ent_id()]
+        for eval_data in raw_eval_sets:
+            for i, doc in enumerate(eval_data):
+                for j, mention in enumerate(doc.mentions):
+                    if mention.gold_ent_id() in redirect_vocab:
+                        eval_data[i].mentions[j]._gold_ent_id = redirect_vocab[mention.gold_ent_id()]
 
     yamada_reader = ModelReader(FLAGS.yamada_model_file, YAMADA_DIM) if FLAGS.yamada_model_file is not None else None
 
@@ -152,9 +179,20 @@ def load_data_and_embeddings(
 
     wiki2id_vocab, id2wiki_vocab = loadWikiVocab(FLAGS.wiki_entity_vocab)
 
+    # candidate file types
+    files = re.split(r',', FLAGS.candidates_file)
+    for f in files:
+        tmp_items = re.split(r':', f)
+        dataset_types.add(tmp_items[0])
+
     candidate_handler = candidate_manager(FLAGS.candidates_file, vocab=mention_vocab,
-                          lowercase=FLAGS.lowercase, id2label=id2wiki_vocab, label2id=wiki2id_vocab)
+                          lowercase=FLAGS.lowercase, id2label=id2wiki_vocab,
+                        label2id=wiki2id_vocab, support_fuzzy=FLAGS.support_fuzzy,
+                          redirect_vocab=redirect_vocab)
     candidate_handler.loadCandidates()
+    if FLAGS.save_candidates_path is not None:
+        candidate_handler.saveCandidatesToFile(os.path.join(FLAGS.save_candidates_path,
+                                               '-'.join(dataset_types)+'_candidate'))
 
     logger.Log("Unk mention types rate: {:2.6f}% ({}/{}), average candidates: {:2.6f}% ({}/{}) from {}!".format(
         (len(mention_vocab)-len(candidate_handler._mention_dict))*100/float(len(mention_vocab)),
@@ -309,9 +347,14 @@ def get_flags():
 
     gflags.DEFINE_string(
         "candidates_file", None, "Each line contains mention-entities pair, separated by tab. "
-                                 "type:file, type in ['ppr','wiki','dictionary','yago']"
+                                 "type:file, type in ['ppr','wiki_title', 'wiki_anchor', 'wiki_redirect', 'dictionary','yago','ncel']"
                                  "use ',' to separate multiple eval data.")
+    gflags.DEFINE_boolean("support_fuzzy", True, "")
+    gflags.DEFINE_string(
+        "save_candidates_path", None, "Each line: <string><tab><cprob><tab><id>"
+                                  "type is ncel.")
     gflags.DEFINE_string("wiki_entity_vocab", None, "line: entity_label \t entity_id")
+    gflags.DEFINE_string("wiki_redirect_vocab", None, "line: redirect_id \t entity_id")
     gflags.DEFINE_string("word_embedding_file", None, "")
     gflags.DEFINE_string("entity_embedding_file", None, "")
     gflags.DEFINE_string("sense_embedding_file", None, "")

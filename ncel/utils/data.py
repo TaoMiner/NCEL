@@ -5,6 +5,7 @@ import random
 import time
 import sys
 import struct
+import re
 
 import numpy as np
 from ncel.utils.layers import buildGraph
@@ -231,20 +232,21 @@ def LoadEmbeddingsFromBinary(vocabulary, embedding_dim, path, isSense=False):
 def TrimDataset(dataset, seq_length, doc_length, logger=None):
     """Avoid using excessively long training examples."""
     # disgard over length sentence and document
-    trimmed_dataset = []
-    for doc in dataset:
-        n_sents = len(doc.sentences)
-        max_n_tokens = max([len(sent) for sent in doc.sentences])
-        if n_sents <= doc_length and max_n_tokens <= seq_length:
-            trimmed_dataset.append(doc)
+    if seq_length > 0 and doc_length > 0:
+        trimmed_dataset = []
+        for doc in dataset:
+            n_sents = len(doc.sentences)
+            max_n_tokens = max([len(sent) for sent in doc.sentences])
+            if n_sents <= doc_length and max_n_tokens <= seq_length:
+                trimmed_dataset.append(doc)
 
-    diff_text = len(dataset) - len(trimmed_dataset)
-    if logger and diff_text > 0:
-        logger.Log(
-            "Discarding " +
-            str(diff_text) +
-            " textual over-length documents.")
-
+        diff_text = len(dataset) - len(trimmed_dataset)
+        if logger and diff_text > 0:
+            logger.Log(
+                "Discarding " +
+                str(diff_text) +
+                " textual over-length documents.")
+    else: trimmed_dataset = dataset
     return trimmed_dataset
 
 def TokensToIDs(word_vocabulary, dataset, stop_words=None, logger=None):
@@ -330,6 +332,7 @@ def EntityToIDs(entity_vocabulary, dataset, include_unresolved=False, logger=Non
     c_unk = 0
     nil_num = 0
     g_unk = 0
+    no_gold_cand = 0
 
     for i, doc in enumerate(dataset):
         for j, mention in enumerate(doc.mentions):
@@ -337,17 +340,35 @@ def EntityToIDs(entity_vocabulary, dataset, include_unresolved=False, logger=Non
             if not mention._is_trainable :
                 m_unk += 1
                 continue
-            # replace gold id
             if include_unresolved and mention._is_NIL:
                 dataset[i].mentions[j]._gold_ent_id = unk_id
                 nil_num += 1
-            elif mention.gold_ent_id() is None or mention.gold_ent_id() not in entity_vocabulary\
-                    or mention.gold_ent_id() not in [c.id for c in mention.candidates]:
-                dataset[i].mentions[j]._is_trainable = False
+            elif not include_unresolved and mention._is_NIL:
+                mention._is_trainable = False
                 dataset[i].n_candidates -= len(mention.candidates)
-                g_unk += 1
+                m_unk += 1
             else:
-                dataset[i].mentions[j]._gold_ent_id = entity_vocabulary[mention.gold_ent_id()]
+                # set candidate label
+                is_trainable = False
+                for k, cand in enumerate(mention.candidates):
+                    if mention.gold_ent_id() is not None and cand.id == mention.gold_ent_id():
+                        dataset[i].mentions[j].candidates[k].setGold()
+                        is_trainable = True
+                        break
+                if not is_trainable:
+                    mention._is_trainable = False
+                    m_unk += 1
+                    dataset[i].n_candidates -= len(mention.candidates)
+                    no_gold_cand += 1
+                # gold no vec
+                elif mention.gold_ent_id() is None or mention.gold_ent_id() not in entity_vocabulary:
+                    mention._is_trainable = False
+                    m_unk += 1
+                    dataset[i].n_candidates -= len(mention.candidates)
+                    g_unk += 1
+                else:
+                    dataset[i].mentions[j]._gold_ent_id = entity_vocabulary[mention.gold_ent_id()]
+
             # replace candidate id
             new_candidates = []
             for k, cand in enumerate(mention.candidates):
@@ -357,14 +378,22 @@ def EntityToIDs(entity_vocabulary, dataset, include_unresolved=False, logger=Non
                     new_candidates.append(dataset[i].mentions[j].candidates[k])
                 else:
                     c_unk += 1
+                    if cand.getIsGlod():
+                        no_gold_cand += 1
+                        m_unk += 1
+                        mention._is_trainable = False
+                        dataset[i].n_candidates -= len(mention.candidates)
             dataset[i].mentions[j].candidates = new_candidates
     if logger:
         logger.Log("Untrainable rate {:2.6f}% ({}/{}), "
           "Unk candidate rate {:2.6f}% ({}/{}), "
+           "No gold candidate rate {:2.6f}% ({}/{}), "
           "Unk gold rate {:2.6f}% ({}/{}), "
-          "NIL rate {:2.6f}% ({}/{}) !".format((m_unk*100.0/m_num),
-             m_unk, m_num, (c_unk*100.0/c_num), c_unk, c_num,
-             (g_unk * 100.0 / m_num), g_unk, m_num, (nil_num * 100.0 / m_num), nil_num, m_num))
+          "NIL rate {:2.6f}% ({}/{}) !".format((m_unk*100.0/m_num), m_unk, m_num,
+              (c_unk*100.0/c_num), c_unk, c_num,
+               (no_gold_cand * 100.0/m_num), no_gold_cand, m_num,
+                (g_unk * 100.0 / m_num), g_unk, m_num,
+                (nil_num * 100.0 / m_num), nil_num, m_num))
     return dataset
 
 # todo: cropped those mention with no gold candidates
