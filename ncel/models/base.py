@@ -13,7 +13,7 @@ from ncel.utils.data import MakeEvalIterator, MakeTrainingIterator
 from ncel.models.featureGenerator import *
 from ncel.utils.logparse import parse_flags
 from ncel.utils.model_reader import ModelReader
-from ncel.utils.misc import loadWikiVocab, loadRedirectVocab
+from ncel.utils.misc import loadWikiVocab, loadRedirectVocab, loadStopWords
 
 import ncel.models.ncel as ncel
 
@@ -23,7 +23,7 @@ import torch
 
 FLAGS = gflags.FLAGS
 
-MAX_CANDIDATES = 0
+MAX_CANDIDATES = 30
 YAMADA_DIM = 300
 
 DATA_TYPE = ["conll",
@@ -167,23 +167,21 @@ def load_data_and_embeddings(
                     if mention.gold_ent_id() in redirect_vocab:
                         eval_data[i].mentions[j]._gold_ent_id = redirect_vocab[mention.gold_ent_id()]
 
-    yamada_reader = ModelReader(FLAGS.yamada_model_file, YAMADA_DIM) if FLAGS.yamada_model_file is not None else None
-
     # Prepare the word and mention vocabulary.
     word_vocab, mention_vocab = BuildVocabulary(
         raw_training_data,
         raw_eval_sets,
         FLAGS.word_embedding_file,
-        yamada_reader=yamada_reader,
         logger=logger)
 
     wiki2id_vocab, id2wiki_vocab = loadWikiVocab(FLAGS.wiki_entity_vocab)
 
     # candidate file types
+    candidate_types = []
     files = re.split(r',', FLAGS.candidates_file)
     for f in files:
         tmp_items = re.split(r':', f)
-        dataset_types.add(tmp_items[0])
+        candidate_types.append(tmp_items[0])
 
     candidate_handler = candidate_manager(FLAGS.candidates_file, vocab=mention_vocab,
                           lowercase=FLAGS.lowercase, id2label=id2wiki_vocab,
@@ -191,17 +189,18 @@ def load_data_and_embeddings(
                           redirect_vocab=redirect_vocab)
     candidate_handler.loadCandidates()
     if FLAGS.save_candidates_path is not None:
+        fuzzy_str = 'fuzzy' if FLAGS.support_fuzzy else 'nofuzzy'
         candidate_handler.saveCandidatesToFile(os.path.join(FLAGS.save_candidates_path,
-                                               '-'.join(dataset_types)+'_candidate'))
+             '-'.join(dataset_types)+'-'.join(candidate_types)+'_candidate_'+fuzzy_str))
 
     logger.Log("Unk mention types rate: {:2.6f}% ({}/{}), average candidates: {:2.6f}% ({}/{}) from {}!".format(
         (len(mention_vocab)-len(candidate_handler._mention_dict))*100/float(len(mention_vocab)),
         len(mention_vocab) - len(candidate_handler._mention_dict), len(mention_vocab), candidate_handler._candidates_total/float(len(candidate_handler._mention_dict)),
          candidate_handler._candidates_total, len(candidate_handler._mention_dict), FLAGS.candidates_file))
 
-    entity_vocab = BuildEntityVocabulary(candidate_handler._entity_set,
+    entity_vocab, sense_vocab = BuildEntityVocabulary(candidate_handler._entity_set,
                                          FLAGS.entity_embedding_file, FLAGS.sense_embedding_file,
-                                         yamada_reader=yamada_reader, logger=logger)
+                                        logger=logger)
 
     # Load pretrained embeddings.
     logger.Log("Loading vocabulary with " + str(len(word_vocab))
@@ -215,22 +214,20 @@ def load_data_and_embeddings(
     entity_embeddings = LoadEmbeddingsFromBinary(
         entity_vocab, FLAGS.embedding_dim, FLAGS.entity_embedding_file)
 
-    sense_embeddings, mu_embeddings = LoadEmbeddingsFromBinary(
-        entity_vocab, FLAGS.embedding_dim, FLAGS.sense_embedding_file, isSense=True)
-
-    # load yamada embeddings
-    if yamada_reader is not None:
-        logger.Log("Loading yamada model from " + FLAGS.yamada_model_file)
-        yamada_reader.loadModel(word_vocab, entity_vocab)
+    sense_embeddings = None
+    mu_embeddings = None
+    if sense_vocab is not None:
+        sense_embeddings, mu_embeddings = LoadEmbeddingsFromBinary(
+            sense_vocab, FLAGS.embedding_dim, FLAGS.sense_embedding_file, isSense=True)
 
     initial_embeddings = (word_embeddings, entity_embeddings, sense_embeddings, mu_embeddings)
-    vocabulary = (word_vocab, entity_vocab, id2wiki_vocab)
+    vocabulary = (word_vocab, entity_vocab, sense_vocab, id2wiki_vocab)
+    stop_words = loadStopWords(FLAGS.stop_word_file) if FLAGS.stop_word_file is not None else {}
 
     feature_manager = get_feature_manager(initial_embeddings, FLAGS.embedding_dim,
                  str_sim=FLAGS.str_sim, prior=FLAGS.prior, hasAtt=FLAGS.att,
                  local_context_window=FLAGS.local_context_window,
-                  global_context_window=FLAGS.global_context_window,
-                   ntee_model=yamada_reader)
+                  global_context_window=FLAGS.global_context_window)
 
     # Trim dataset, convert token sequences to integer sequences, crop, and
     # pad. construct data iterator
@@ -244,12 +241,11 @@ def load_data_and_embeddings(
         eval_data = PreprocessDataset(raw_eval_sets[i],
                                       vocabulary,
                                       initial_embeddings,
-                                      FLAGS.seq_length,
-                                      FLAGS.doc_length,
+                                      FLAGS.max_tokens,
                                       FLAGS.max_candidates_per_document,
                                       feature_manager,
+                                      stop_words=stop_words,
                                       topn_candidate=FLAGS.topn_candidate,
-                                      is_eval=False,
                                       logger=logger,
                                       include_unresolved=FLAGS.include_unresolved,
                                       allow_cropping=FLAGS.allow_cropping)
@@ -264,12 +260,11 @@ def load_data_and_embeddings(
         training_data = PreprocessDataset(raw_training_data,
                                           vocabulary,
                                           initial_embeddings,
-                                          FLAGS.seq_length,
-                                          FLAGS.doc_length,
+                                          FLAGS.max_tokens,
                                           FLAGS.max_candidates_per_document,
                                           feature_manager,
+                                          stop_words=stop_words,
                                           topn_candidate=FLAGS.topn_candidate,
-                                          is_eval=False,
                                           logger=logger,
                                           include_unresolved=FLAGS.include_unresolved,
                                           allow_cropping=FLAGS.allow_cropping)
@@ -358,15 +353,13 @@ def get_flags():
     gflags.DEFINE_string("word_embedding_file", None, "")
     gflags.DEFINE_string("entity_embedding_file", None, "")
     gflags.DEFINE_string("sense_embedding_file", None, "")
-    # yamada embeddings
-    gflags.DEFINE_string("yamada_model_file", None, "")
+    gflags.DEFINE_string("stop_word_file", None, "")
 
     gflags.DEFINE_boolean(
         "allow_cropping",
         False,
         "Trim overly long training examples to fit. If not set, skip them.")
-    gflags.DEFINE_integer("seq_length", 200, "")
-    gflags.DEFINE_integer("doc_length", 100, "")
+    gflags.DEFINE_integer("max_tokens", 200, "")
     gflags.DEFINE_integer("max_candidates_per_document", 200, "")
     gflags.DEFINE_integer("topn_candidate", 7, "Use all candidates if set 0.")
 

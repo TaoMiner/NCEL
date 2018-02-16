@@ -5,11 +5,12 @@ import random
 import time
 import sys
 import struct
-import re
 
 import numpy as np
 from ncel.utils.layers import buildGraph
 from ncel.utils.Candidates import resortCandidates
+
+from ncel.utils.misc import Accumulator
 
 PADDING_TOKEN = "_PAD"
 # UNK must be existed in pre-trained embeddings
@@ -56,24 +57,54 @@ class SimpleProgressBar(object):
         self.reset()
         sys.stdout.write('\n')
 
+def recordCandidates(A, rank, length):
+    # avg rank
+    if rank >= 0 and rank < 30:
+        rank_count = len(A.get('rank_30', clear=False))
+        if rank_count >= A.maxlen:
+            A.add('avg_rank_30', A.get_avg('rank_30'))
+        A.add('rank_30', rank/float(length))
+    elif rank >= 30 and rank < 50:
+        rank_count = len(A.get('rank_50', clear=False))
+        if rank_count >= A.maxlen:
+            A.add('avg_rank_50', A.get_avg('rank_50'))
+        A.add('rank_50', rank / float(length))
+    else:
+        rank_count = len(A.get('rank_large', clear=False))
+        if rank_count >= A.maxlen:
+            A.add('avg_rank_large', A.get_avg('rank_large'))
+        A.add('rank_large', rank / float(length))
+
+def statsCandidates(A, logger=None):
+    rank_count_30_avg = len(A.get('avg_rank_30', clear=False)) * A.maxlen
+    rank_count_30 = len(A.get('rank_30', clear=False))
+    rank_count_50_avg = len(A.get('avg_rank_50', clear=False)) * A.maxlen
+    rank_count_50 = len(A.get('rank_50', clear=False))
+    rank_count_large_avg = len(A.get('avg_rank_large', clear=False)) * A.maxlen
+    rank_count_large = len(A.get('rank_large', clear=False))
+
+    if rank_count_30_avg > 0:
+        avg_rank_30 = (rank_count_30_avg * A.get_avg('avg_rank_30') + rank_count_30 * A.get_avg('rank_30')) / (rank_count_30_avg+rank_count_30)
+    else: avg_rank_30 = A.get_avg('rank_30')
+    if rank_count_50_avg > 0:
+        avg_rank_50 = (rank_count_50_avg * A.get_avg('avg_rank_50') + rank_count_50 * A.get_avg('rank_50')) / (rank_count_50_avg + rank_count_50)
+    else: avg_rank_50 = A.get_avg('rank_50')
+    if rank_count_large_avg > 0:
+        avg_rank_large = (rank_count_large_avg * A.get_avg('avg_rank_large') + rank_count_large * A.get_avg('rank_large')) / (rank_count_large_avg + rank_count_large)
+    else: avg_rank_large = A.get_avg('rank_large')
+    if logger is not None:
+        logger.Log("avg gold rank 30:{}/{}, 50:{}/{}, large:{}/{}.".format(avg_rank_30, rank_count_30_avg+rank_count_30,
+                       avg_rank_50,rank_count_50_avg+rank_count_50, avg_rank_large, rank_count_large+rank_count_large_avg))
+
 def AddCandidatesToDocs(dataset, candidate_handler, vocab=None, topn=0,
                         include_unresolved=False, logger=None):
     for i, doc in enumerate(dataset):
         candidate_handler.add_candidates_to_document(dataset[i], vocab=vocab,topn=topn)
-    '''
-        # filter out those add candidates failed!
-        for j, mention in enumerate(doc.mentions):
-            if (not mention._is_NIL and mention.gold_ent_id() not in [c.id for c in mention.candidates]) or (
-                        not include_unresolved and len(mention.candidates) < 1):
-                dataset[i].mentions[j]._is_trainable = False
-                dataset[i].n_candidates -= len(dataset[i].mentions[j].candidates)
-    '''
     if logger is not None:
         logger.Log("Add candidates success: totally {} candidates of {} mentions in {} documents!".format(
             sum([doc.n_candidates for doc in dataset]), sum([len(doc.mentions) for doc in dataset]), len(dataset)))
 
-def BuildVocabulary(raw_training_data, raw_eval_sets, word_embedding_path,
-                    yamada_reader=None, logger=None):
+def BuildVocabulary(raw_training_data, raw_eval_sets, word_embedding_path, logger=None):
     # Find the set of words that occur in the data.
     logger.Log("Constructing vocabulary...")
 
@@ -100,14 +131,10 @@ def BuildVocabulary(raw_training_data, raw_eval_sets, word_embedding_path,
     # embedding.
     word_vocabulary = BuildVocabularyForBinaryEmbeddingFile(
         word_embedding_path, words_in_data, CORE_VOCABULARY)
-    if yamada_reader is not None:
-        word_vocabulary = BuildVocabularyForBinaryEmbeddingFile(
-            yamada_reader._w2v_file, words_in_data, CORE_VOCABULARY)
 
     return word_vocabulary, mentions_in_data
 
-def BuildEntityVocabulary(candidate_entities, entity_embedding_file, sense_embedding_file,
-                          yamada_reader=None, logger=None):
+def BuildEntityVocabulary(candidate_entities, entity_embedding_file, sense_embedding_file=None, logger=None):
     # Find the set of words that occur in the data.
     logger.Log("Constructing entity vocabulary...")
 
@@ -118,13 +145,10 @@ def BuildEntityVocabulary(candidate_entities, entity_embedding_file, sense_embed
 
     # Build a vocabulary of entities in the data for which we have an
     # embedding.
-    entity_vocabulary = BuildVocabularyForBinaryEmbeddingFile(
-        sense_embedding_file, entity_vocabulary, CORE_VOCABULARY, isSense=True)
-    if yamada_reader is not None:
-        entity_vocabulary = BuildVocabularyForBinaryEmbeddingFile(
-            yamada_reader._e2v_file, entity_vocabulary, CORE_VOCABULARY, isSense=False)
+    sense_vocabulary = BuildVocabularyForBinaryEmbeddingFile(sense_embedding_file,
+                        candidate_entities, CORE_VOCABULARY, isSense=True) if sense_embedding_file is not None else None
 
-    return entity_vocabulary
+    return entity_vocabulary, sense_vocabulary
 
 def BuildVocabularyForBinaryEmbeddingFile(path, types_in_data, core_vocabulary, isSense=False):
     """Quickly iterates through a GloVe-formatted text vector file to
@@ -229,25 +253,47 @@ def LoadEmbeddingsFromBinary(vocabulary, embedding_dim, path, isSense=False):
 
 # preprocess raw data
 # todo: may be not to trim dataset
-def TrimDataset(dataset, seq_length, doc_length, logger=None):
+def TrimDataset(dataset, max_tokens, allow_cropping=True, logger=None):
     """Avoid using excessively long training examples."""
     # disgard over length sentence and document
-    if seq_length > 0 and doc_length > 0:
-        trimmed_dataset = []
-        for doc in dataset:
-            n_sents = len(doc.sentences)
-            max_n_tokens = max([len(sent) for sent in doc.sentences])
-            if n_sents <= doc_length and max_n_tokens <= seq_length:
-                trimmed_dataset.append(doc)
-
-        diff_text = len(dataset) - len(trimmed_dataset)
-        if logger and diff_text > 0:
-            logger.Log(
-                "Discarding " +
-                str(diff_text) +
-                " textual over-length documents.")
-    else: trimmed_dataset = dataset
-    return trimmed_dataset
+    if max_tokens > 0:
+        diff_text = sum([1 for doc in dataset if len(doc.tokens) <= max_tokens])
+        if not allow_cropping:
+            if logger and diff_text > 0:
+                logger.Log(
+                    "Discarding " +
+                    str(diff_text) +
+                    " textual over-length documents.")
+            dataset = [doc for doc in dataset if len(doc.tokens) <= max_tokens]
+        else:
+            if logger and diff_text > 0:
+                logger.Log(
+                    "Cropping " +
+                    str(diff_text) +
+                    " textual over-length documents.")
+            # cropping
+            for i, doc in enumerate(dataset):
+                if len(doc.tokens) > max_tokens:
+                    # trim doc
+                    dataset[i].tokens = dataset[i].tokens[:max_tokens]
+                    new_sents = []
+                    sent_len = 0
+                    sent_idx = 0
+                    while sent_len < max_tokens and sent_idx < len(doc.sentences):
+                        diff = max_tokens - sent_len - len(doc.sentences[sent_idx])
+                        if diff >= 0 :
+                            new_sents.append(doc.sentences[sent_idx])
+                            sent_len += len(doc.sentences[sent_idx])
+                        else:
+                            new_sents.append(doc.sentences[sent_idx][:diff])
+                            sent_len += len(doc.sentences[sent_idx][:diff])
+                        sent_idx += 1
+                    dataset[i].sentences = new_sents
+                    # trim mentions
+                    for j, mention in enumerate(doc.mentions):
+                        if mention._mention_end > max_tokens:
+                            dataset[i].mentions[j]._is_trainable = False
+    return dataset
 
 def TokensToIDs(word_vocabulary, dataset, stop_words=None, logger=None):
     """Replace strings in original boolean dataset with token IDs."""
@@ -299,7 +345,6 @@ def TokensToIDs(word_vocabulary, dataset, stop_words=None, logger=None):
                 sent = doc.sentences[mention._sent_idx]
                 if len(new_sents[mention._sent_idx]) == 0:
                     dataset[i].mentions[j]._is_trainable = False
-                    dataset[i].n_candidates -= len(dataset[i].mentions[j].candidates)
                     continue
                 mt_unks = 0
                 for t in sent[mention._pos_in_sent:mention._pos_in_sent + mention._mention_length]:
@@ -320,11 +365,14 @@ def TokensToIDs(word_vocabulary, dataset, stop_words=None, logger=None):
             doc.tokens = [t for s in dataset[i].sentences for t in s]
     return dataset
 
-def EntityToIDs(entity_vocabulary, dataset, include_unresolved=False, logger=None):
+def EntityToIDs(entity_vocabulary, dataset, sense_vocab=None,
+                include_unresolved=False, logger=None):
 
     if UNK_TOKEN in CORE_VOCABULARY:
         unk_id = CORE_VOCABULARY[UNK_TOKEN]
     else: unk_id = -1
+    # avg rank
+    # A = Accumulator(maxlen=500)
 
     m_num = 0
     m_unk = 0
@@ -335,6 +383,7 @@ def EntityToIDs(entity_vocabulary, dataset, include_unresolved=False, logger=Non
     no_gold_cand = 0
 
     for i, doc in enumerate(dataset):
+        dataset[i].n_candidates = 0
         for j, mention in enumerate(doc.mentions):
             m_num += 1
             if not mention._is_trainable :
@@ -345,7 +394,6 @@ def EntityToIDs(entity_vocabulary, dataset, include_unresolved=False, logger=Non
                 nil_num += 1
             elif not include_unresolved and mention._is_NIL:
                 mention._is_trainable = False
-                dataset[i].n_candidates -= len(mention.candidates)
                 m_unk += 1
             else:
                 # set candidate label
@@ -358,33 +406,43 @@ def EntityToIDs(entity_vocabulary, dataset, include_unresolved=False, logger=Non
                 if not is_trainable:
                     mention._is_trainable = False
                     m_unk += 1
-                    dataset[i].n_candidates -= len(mention.candidates)
                     no_gold_cand += 1
                 # gold no vec
                 elif mention.gold_ent_id() is None or mention.gold_ent_id() not in entity_vocabulary:
                     mention._is_trainable = False
                     m_unk += 1
-                    dataset[i].n_candidates -= len(mention.candidates)
                     g_unk += 1
                 else:
+                    if sense_vocab is not None and mention.gold_ent_id() in sense_vocab:
+                        dataset[i].mentions[j]._gold_sense_id = sense_vocab[mention.gold_ent_id()]
                     dataset[i].mentions[j]._gold_ent_id = entity_vocabulary[mention.gold_ent_id()]
-
-            # replace candidate id
-            new_candidates = []
-            for k, cand in enumerate(mention.candidates):
-                c_num += 1
-                if cand.id in entity_vocabulary:
-                    dataset[i].mentions[j].candidates[k].id = entity_vocabulary[cand.id]
-                    new_candidates.append(dataset[i].mentions[j].candidates[k])
-                else:
-                    c_unk += 1
-                    if cand.getIsGlod():
-                        no_gold_cand += 1
-                        m_unk += 1
-                        mention._is_trainable = False
-                        dataset[i].n_candidates -= len(mention.candidates)
-            dataset[i].mentions[j].candidates = new_candidates
+            if mention._is_trainable:
+                # replace candidate id
+                new_candidates = []
+                # avg rank
+                # rank = -1
+                for k, cand in enumerate(mention.candidates):
+                    c_num += 1
+                    if cand.id in entity_vocabulary:
+                        if sense_vocab is not None and cand.id in sense_vocab:
+                            dataset[i].mentions[j].candidates[k].setSense(sense_vocab[cand.id])
+                        dataset[i].mentions[j].candidates[k].id = entity_vocabulary[cand.id]
+                        new_candidates.append(dataset[i].mentions[j].candidates[k])
+                        # avg rank
+                        # if cand.getIsGlod(): rank = k
+                    else:
+                        c_unk += 1
+                        if cand.getIsGlod():
+                            no_gold_cand += 1
+                            m_unk += 1
+                            mention._is_trainable = False
+                dataset[i].mentions[j].candidates = new_candidates
+                dataset[i].n_candidates += len(new_candidates)
+                # if rank>=0:
+                #    recordCandidates(A, rank, len(new_candidates))
     if logger:
+        # avg rank
+        # statsCandidates(A, logger=logger)
         logger.Log("Untrainable rate {:2.6f}% ({}/{}), "
           "Unk candidate rate {:2.6f}% ({}/{}), "
            "No gold candidate rate {:2.6f}% ({}/{}), "
@@ -396,7 +454,6 @@ def EntityToIDs(entity_vocabulary, dataset, include_unresolved=False, logger=Non
                 (nil_num * 100.0 / m_num), nil_num, m_num))
     return dataset
 
-# todo: cropped those mention with no gold candidates
 def CropMentionAndCandidates(dataset, max_candidates, topn=0, allow_cropping=True, logger=None):
     # crop mention candidates according to topn
     if topn > 0:
@@ -443,7 +500,7 @@ def CropMentionAndCandidates(dataset, max_candidates, topn=0, allow_cropping=Tru
                 c2s_ms = sorted(candidate_length_set, key=lambda x: x[1], reverse=True)
                 diff = doc.n_candidates - max_candidates
                 p = -1
-                while diff > 0:
+                while diff > 0 and p < len(c2s_ms)-1:
                     p += 1
                     if not dataset[i].mentions[c2s_ms[p][0]]._is_trainable : continue
                     dataset[i].mentions[c2s_ms[p][0]]._is_trainable = False
@@ -451,6 +508,7 @@ def CropMentionAndCandidates(dataset, max_candidates, topn=0, allow_cropping=Tru
                     tmp_clen = len(doc.mentions[c2s_ms[p][0]].candidates)
                     diff -= tmp_clen
                     dataset[i].n_candidates -= tmp_clen
+                if p == len(c2s_ms)-1 : dataset[i].n_candidates = 0
 
         logger.Log("Actual cropped {} mentions of {} documents! ".format(cropped_m, cropped_d))
 
@@ -496,22 +554,22 @@ def PreprocessDataset(
         dataset,
         vocabulary,
         embeddings,
-        seq_length,
-        doc_length,
+        max_tokens,
         max_candidates,
         feature_manager,
-        is_eval=False,
+        stop_words={},
         topn_candidate=0,
         logger=None,
         include_unresolved=False,
         allow_cropping=False):
 
     _, entity_embeddings, _, _ = embeddings
-    word_vocab, entity_vocab, _ = vocabulary
-    dataset = TokensToIDs(word_vocab, dataset, stop_words={}, logger=logger)
-    # may not trim data by doc length
-    dataset = TrimDataset(dataset, seq_length, doc_length, logger=logger)
-    dataset = EntityToIDs(entity_vocab, dataset,
+    word_vocab, entity_vocab, sense_vocab, _ = vocabulary
+    dataset = TokensToIDs(word_vocab, dataset, stop_words=stop_words, logger=logger)
+
+    dataset = TrimDataset(dataset, max_tokens, allow_cropping=allow_cropping, logger=logger)
+
+    dataset = EntityToIDs(entity_vocab, dataset, sense_vocab=sense_vocab,
                           include_unresolved=include_unresolved, logger=logger)
     feature_manager.AddEmbeddingFeatures(dataset)
     dataset = CropMentionAndCandidates(dataset, max_candidates, topn=topn_candidate, logger=logger)

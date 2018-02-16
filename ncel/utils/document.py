@@ -20,6 +20,8 @@ class Mention:
         self._gold_ent_id = gold_ent_id
         self._gold_ent_str = gold_ent_str
 
+        self._gold_sense_id = None
+
         self._mention_length = None
         self._mention_str = None
 

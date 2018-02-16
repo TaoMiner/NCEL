@@ -4,6 +4,8 @@ from ncel.utils.layers import cosSim
 
 DEFAULT_PRIOR = 0.0
 
+# ppr, wiki_title, wiki_redirect, yago, combine, uniform
+# wiki_anchor, dictionary, average
 SOURCE = ['ppr','wiki_title', 'wiki_anchor', 'wiki_redirect', 'dictionary','yago','ncel']
 
 class CandidatesHandler:
@@ -13,6 +15,8 @@ class CandidatesHandler:
         self._vocab = vocab         # mention vocab
         self._mention_dict = None       # {str:{ent:pem,...},...}
         self._entity_set = None     #entity set
+
+        self._uni_mention_dict = None  # {str:{ent,...},...}
 
         self._candidates_total = 0
 
@@ -25,29 +29,61 @@ class CandidatesHandler:
     def loadCandidates(self):
         for f in self._files:
             items = f.split(':')
-            mention_dict, entity_set = self.loadCandidatesFromFile(items[0],items[1])
-            self.addToCandidates(mention_dict, entity_set)
+            is_uniform, mention_dict, entity_set = self.loadCandidatesFromFile(items[0],items[1])
+            if is_uniform:
+                self.addToUniformCandidates(mention_dict, entity_set)
+            else:
+                self.addToCandidates(mention_dict, entity_set)
+        self.combineCandidates()
         self._candidates_total = sum([len(self._mention_dict[m]) for m in self._mention_dict])
 
-    def addToCandidates(self, mention_dict, entity_set):
-        if self._mention_dict is None:
-            self._mention_dict = {}
-        num_files = len(self._files)
+    def combineCandidates(self):
+        if self._uni_mention_dict is not None:
+            for m in self._uni_mention_dict:
+                # add a uniform distribution to all candidates in mention dict
+                uni_prior = 1.0/float(len(self._uni_mention_dict[m]))
+                tmp_cands = self._mention_dict.get(m, {})
+                for c in self._uni_mention_dict[m]:
+                    if c not in tmp_cands:
+                        tmp_cands[c] = uni_prior
+                    else: tmp_cands[c] = max(uni_prior, tmp_cands[c])
+                self._mention_dict[m] = tmp_cands
+        for m in self._mention_dict:
+            self.candidateSoftmax(self._mention_dict[m])
+
+    def addToUniformCandidates(self, mention_dict, entity_set):
+        if self._uni_mention_dict is None:
+            self._uni_mention_dict = {}
         for m in mention_dict:
-            tmp_cands = {}
+            tmp_cand_set = self._uni_mention_dict.get(m, set())
+            # replace candidate id if is redirect
             for c in mention_dict[m]:
                 ent_id = c
                 if self._redirect_vocab is not None and c in self._redirect_vocab:
                     ent_id = self._redirect_vocab[c]
+                tmp_cand_set.add(ent_id)
+            self._uni_mention_dict[m] = tmp_cand_set
+
+        if self._entity_set is None:
+            self._entity_set = entity_set
+        else:
+            self._entity_set.update(entity_set)
+
+    def addToCandidates(self, mention_dict, entity_set):
+        if self._mention_dict is None:
+            self._mention_dict = {}
+        for m in mention_dict:
+            tmp_cands = self._mention_dict.get(m, {})
+            # replace candidate id if is redirect
+            for c in mention_dict[m]:
+                ent_id = c
+                if self._redirect_vocab is not None and c in self._redirect_vocab:
+                    ent_id = self._redirect_vocab[c]
+
                 if ent_id in tmp_cands:
-                    tmp_cands[ent_id] = (tmp_cands[ent_id] + mention_dict[m][c] / float(num_files)) / 2.0
-                else : tmp_cands[ent_id] = mention_dict[m][c] / float(num_files)
-            if m in self._mention_dict:
-                for c in self._mention_dict[m]:
-                    if c in tmp_cands:
-                        tmp_cands[c] = (tmp_cands[c] + self._mention_dict[m][c]) / 2.0
-                    else:
-                        tmp_cands[c] = self._mention_dict[m][c]
+                    # todo: average or max(better)
+                    tmp_cands[ent_id] = max(tmp_cands[ent_id], mention_dict[m][c])
+                else : tmp_cands[ent_id] = mention_dict[m][c]
             self._mention_dict[m] = tmp_cands
 
         if self._entity_set is None:
@@ -59,22 +95,27 @@ class CandidatesHandler:
     def loadCandidatesFromFile(self, type, filename):
         mention_dict = {}
         entity_set = set()
+        is_uniform = False
         if type == SOURCE[0]:
             mention_dict, entity_set = self.loadCandidatesFromPPR(filename)
+            is_uniform = True
         elif type == SOURCE[1]:
             mention_dict, entity_set = self.loadCandidatesFromWikiTitle(filename)
+            is_uniform = True
         elif type == SOURCE[2]:
             mention_dict, entity_set = self.loadCandidatesFromWikiAnchor(filename)
         elif type == SOURCE[3]:
             mention_dict, entity_set = self.loadCandidatesFromWikiRedirect(filename)
+            is_uniform = True
         elif type == SOURCE[4]:
             mention_dict, entity_set = self.loadCandidatesFromDict(filename)
         elif type == SOURCE[5]:
             mention_dict, entity_set = self.loadCandidatesFromYago(filename)
+            is_uniform = True
         elif type == SOURCE[6]:
             mention_dict, entity_set = self.loadCandidatesFromNcel(filename)
 
-        return mention_dict, entity_set
+        return is_uniform, mention_dict, entity_set
 
     # <string><tab><cprob><tab><id>
     def saveCandidatesToFile(self, filename):
@@ -103,11 +144,10 @@ class CandidatesHandler:
                 if self._lowercase: m_str = m_str.lower()
                 if len(items) < 2 or (not isinstance(self._vocab, type(None)) and m_str not in self._vocab) : continue
                 ent_id = items[1]
-                tmp_cand = mention_dict.get(m_str, {})
-                tmp_cand[ent_id] = 1.0
-                mention_dict[m_str] = tmp_cand
-        for m in mention_dict:
-            mention_dict[m] = self.candidateSoftmax(mention_dict[m])
+                tmp_cand_set = mention_dict.get(m_str, set())
+                tmp_cand_set.add(ent_id)
+                mention_dict[m_str] = tmp_cand_set
+                entity_set.add(ent_id)
         return mention_dict, entity_set
 
     # wiki title
@@ -124,9 +164,9 @@ class CandidatesHandler:
                 if len(items) < 2 or (not isinstance(self._vocab, type(None)) and m_str not in self._vocab): continue
                 ent_id = items[1]
                 entity_set.add(ent_id)
-                tmp_cand = mention_dict.get(m_str, {})
-                tmp_cand[ent_id] = 1.0
-                mention_dict[m_str] = tmp_cand
+                tmp_cand_set = mention_dict.get(m_str, set())
+                tmp_cand_set.add(ent_id)
+                mention_dict[m_str] = tmp_cand_set
 
                 # support fuzzy match, todo: for now, only support approximate person name (token=2)
                 if self._support_fuzzy:
@@ -136,11 +176,9 @@ class CandidatesHandler:
                         if self._lowercase: sf_m_str = sf_m_str.lower()
                         # filter mention out of mention vocab
                         if not isinstance(self._vocab, type(None)) and sf_m_str not in self._vocab: continue
-                        tmp_cand = mention_dict.get(sf_m_str, {})
-                        tmp_cand[ent_id] = 1.0
-                        mention_dict[sf_m_str] = tmp_cand
-        for m in mention_dict:
-            mention_dict[m] = self.candidateSoftmax(mention_dict[m])
+                        tmp_cand_set = mention_dict.get(sf_m_str, set())
+                        tmp_cand_set.add(ent_id)
+                        mention_dict[sf_m_str] = tmp_cand_set
         return mention_dict, entity_set
 
     # Personalized Page Rank for Named Entity Disambiguation
@@ -156,13 +194,10 @@ class CandidatesHandler:
                 if len(items) < 2: continue
                 # filter mention out of mention vocab
                 if not isinstance(self._vocab, type(None)) and ment_name not in self._vocab: continue
-                tmp_cand = mention_dict.get(ment_name, {})
-                for c in items[1:]:
-                    entity_set.add(c)
-                    tmp_cand[c] = 1.0
-                mention_dict[ment_name] = tmp_cand
-        for m in mention_dict:
-            mention_dict[m] = self.candidateSoftmax(mention_dict[m])
+                tmp_cand_set = mention_dict.get(ment_name, set())
+                tmp_cand_set.update(items[1:])
+                entity_set.update(items[1:])
+                mention_dict[ment_name] = tmp_cand_set
         return mention_dict, entity_set
 
     # anchors
@@ -187,8 +222,6 @@ class CandidatesHandler:
                     tmp_cand[ent_id] = tmp_count + count
                     mention_dict[m_str] = tmp_cand
                     entity_set.add(ent_id)
-        for m in mention_dict:
-            mention_dict[m] = self.candidateSoftmax(mention_dict[m])
         return mention_dict, entity_set
 
     # A cross-lingual dictionary for english wikipedia con- cepts
@@ -217,8 +250,6 @@ class CandidatesHandler:
                 else:
                     tmp_cand[ent_id] = cprob
                 mention_dict[m_str] = tmp_cand
-        for m in mention_dict:
-            mention_dict[m] = self.candidateSoftmax(mention_dict[m])
         return mention_dict, entity_set
 
     # <Alexander_de_Brus,_Earl_of_Carrick> \t rdfs:label \t "Alexander de Brus, Earl of Carrick"@eng .
@@ -241,11 +272,9 @@ class CandidatesHandler:
                 if wiki_label not in self._label2id: continue
                 ent_id = self._label2id[wiki_label]
                 entity_set.add(ent_id)
-                tmp_cand = mention_dict.get(m_str, {})
-                tmp_cand[ent_id] = 1.0
-                mention_dict[m_str] = tmp_cand
-        for m in mention_dict:
-            mention_dict[m] = self.candidateSoftmax(mention_dict[m])
+                tmp_cand_set = mention_dict.get(m_str, set())
+                tmp_cand_set.add(ent_id)
+                mention_dict[m_str] = tmp_cand_set
         return mention_dict, entity_set
 
     # <string><tab><cprob><tab><id>
@@ -265,8 +294,6 @@ class CandidatesHandler:
                 tmp_cand = mention_dict.get(m_str, {})
                 tmp_cand[ent_id] = cprob
                 mention_dict[m_str] = tmp_cand
-        for m in mention_dict:
-            mention_dict[m] = self.candidateSoftmax(mention_dict[m])
         return mention_dict, entity_set
 
     # return an ordered candidates list
@@ -303,6 +330,8 @@ class Candidate():
         self.id = id
         self.label = label
 
+        self._sense_id = None
+
         self._mention = mention
         # feature
         self._is_gold = False
@@ -318,6 +347,12 @@ class Candidate():
         self._sense_mu_emb = None
         self._context_emb = [None] * 4
         self._context_mu_emb = [None] * 4
+
+    def setSense(self, id):
+        self._sense_id = id
+
+    def getSense(self):
+        return self._sense_id
 
     def getMentionText(self):
         return self._mention._mention_str

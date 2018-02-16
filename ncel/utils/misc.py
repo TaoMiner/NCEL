@@ -123,6 +123,14 @@ def loadRedirectVocab(filename, id_vocab=None):
             redirectid_map[items[0]] = items[1]
     return redirectid_map
 
+def loadStopWords(filename):
+    stop_words = set()
+    with open(filename, 'r', encoding='UTF-8') as fin:
+        for line in fin:
+            stop_words.add(line.strip())
+    return stop_words
+
+
 def inspectDoc(doc, word_vocab=None):
     if not isinstance(word_vocab, type(None)):
         word_label_vocab = dict(

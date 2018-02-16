@@ -7,8 +7,7 @@ from ncel.utils.layers import cosSim
 class FeatureGenerator:
     def __init__(self, initial_embeddings, embedding_dim,
                  str_sim=True, prior=True, hasAtt=True,
-                 local_context_window=5, global_context_window=5,
-                 use_mu=True, use_embeddings=True, ntee_model=None):
+                 local_context_window=5, global_context_window=5, use_embeddings=True):
         self._has_str_sim = str_sim
         self._has_prior = prior
         self._local_window = local_context_window
@@ -16,9 +15,7 @@ class FeatureGenerator:
         self._has_att = hasAtt
         (self.word_embeddings, self.entity_embeddings,
          self.sense_embeddings, self.mu_embeddings) = initial_embeddings
-        self._ntee_model = ntee_model
         self._dim = embedding_dim
-        self._use_mu = use_mu
         self._use_embeddings = use_embeddings
 
 
