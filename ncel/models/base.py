@@ -50,11 +50,11 @@ def log_path(FLAGS, load=False):
 # candidates : batch * cand_num
 # candidates_entity: batch * cand_num
 # length: batch
-# truth: batch * cand_num
+# truth: batch
 def get_batch(batch, local_window, use_lr_context=True, split_by_sent=True):
     docs = batch
-    num_candidates = np.array([doc.n_candidates for doc in docs])
-    max_cand_num = np.max(num_candidates)
+    num_candidates = np.array([len(m.candidates) for doc in docs for m in doc.mentions])
+    max_cand_num = max(num_candidates)
 
     token_pad = 0
     feature_pad = 0.0
@@ -66,15 +66,16 @@ def get_batch(batch, local_window, use_lr_context=True, split_by_sent=True):
     CID = []
     CID_entity = []
     Y = []
+
     for doc in docs:
-        count = 0
-        con1 = []
-        con2 = []
-        base = []
-        cids = []
-        cids_entity = []
-        y = []
         for m in doc.mentions:
+            con1 = []
+            con2 = []
+            base = []
+            cids = []
+            cids_entity = []
+            y = []
+            # pad tokens
             tmp_con1 = m.left_context(max_len=local_window, split_by_sent=split_by_sent)
             diff = local_window - len(tmp_con1)
             if diff > 0:
@@ -85,34 +86,35 @@ def get_batch(batch, local_window, use_lr_context=True, split_by_sent=True):
             if diff > 0:
                 tmp_con2 += [token_pad] * diff
 
-            for c in m.candidates:
+            gold_idx = -1
+            for i, c in enumerate(m.candidates):
                 base.append(c.getBaseFeature())
                 if base_feature_dim <= 0: base_feature_dim = len(c.getBaseFeature())
                 con1.append(tmp_con1)
                 con2.append(tmp_con2)
                 cids.append(c._sense_id)
                 cids_entity.append(c.id)
-                y.append(1 if c.getIsGlod() else 0)
-                count += 1
-        # padding current doc candidate to max_cand_num
-        paddings = max_cand_num - count
-        assert paddings >= 0, "doc.n_candidates error!"
-        if paddings > 0:
-            base_vec = [feature_pad] * base_feature_dim
-            token_vec = [token_pad] * local_window
-            for i in range(paddings):
-                base.append(base_vec)
-                con1.append(token_vec)
-                con2.append(token_vec)
-                cids.append(token_pad)
-                cids_entity.append(token_pad)
-                y.append(0)
-        B.append(base)
-        C1.append(con1)
-        C2.append(con2)
-        CID.append(cids)
-        CID_entity.append(cids_entity)
-        Y.append(y)
+                if c.getIsGlod():
+                    gold_idx = i
+            assert gold_idx >= 0, "Error: no gold candidate!"
+            # padding current mention candidate to max_cand_num
+            paddings = max_cand_num - len(m.candidates)
+            if paddings > 0:
+                base_vec = [feature_pad] * base_feature_dim
+                token_vec = [token_pad] * local_window
+                for i in range(paddings):
+                    base.append(base_vec)
+                    con1.append(token_vec)
+                    con2.append(token_vec)
+                    cids.append(token_pad)
+                    cids_entity.append(token_pad)
+                    y.append(0)
+            B.append(base)
+            C1.append(con1)
+            C2.append(con2)
+            CID.append(cids)
+            CID_entity.append(cids_entity)
+            Y.append(gold_idx)
 
     C1 = np.array(C1)
     C2 = np.array(C2)
@@ -247,7 +249,7 @@ def load_data_and_embeddings(
     candidate_handler = candidate_manager(FLAGS.candidates_file, vocab=mention_vocab,
                           lowercase=FLAGS.lowercase, id2label=id2wiki_vocab,
                         label2id=wiki2id_vocab, support_fuzzy=FLAGS.support_fuzzy,
-                          redirect_vocab=redirect_vocab)
+                          redirect_vocab=redirect_vocab, topn=FLAGS.topn_candidate)
     candidate_handler.loadCandidates()
     if FLAGS.save_candidates_path is not None:
         fuzzy_str = 'fuzzy' if FLAGS.support_fuzzy else 'nofuzzy'
@@ -270,8 +272,7 @@ def load_data_and_embeddings(
         word_vocab, FLAGS.embedding_dim, FLAGS.word_embedding_file)
 
     logger.Log("Loading vocabulary with " + str(len(entity_vocab))
-               + " entities and senses from " + FLAGS.entity_embedding_file
-               + ", and " + FLAGS.sense_embedding_file)
+               + " entities from " + FLAGS.entity_embedding_file)
     entity_embeddings = LoadEmbeddingsFromBinary(
         entity_vocab, FLAGS.embedding_dim, FLAGS.entity_embedding_file)
 
@@ -280,6 +281,8 @@ def load_data_and_embeddings(
     if sense_vocab is not None:
         sense_embeddings, mu_embeddings = LoadEmbeddingsFromBinary(
             sense_vocab, FLAGS.embedding_dim, FLAGS.sense_embedding_file, isSense=True)
+        logger.Log("Loading vocabulary with " + str(len(sense_vocab))
+                   + " senses from " + FLAGS.sense_embedding_file)
 
     initial_embeddings = (word_embeddings, entity_embeddings, sense_embeddings, mu_embeddings)
     vocabulary = (word_vocab, entity_vocab, sense_vocab, id2wiki_vocab)

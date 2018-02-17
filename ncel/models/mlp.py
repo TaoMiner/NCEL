@@ -47,6 +47,7 @@ class MLPC(nn.Module):
         self._use_contexts2 = use_contexts2
         self._use_entity = use_entity
         self._use_att = use_att
+        self._dropout_rate = dropout
 
         word_embeddings, entity_embeddings, sense_embeddings, mu_embeddings = initial_embeddings
         word_vocab_size, word_embedding_dim = word_embeddings.shape
@@ -83,7 +84,7 @@ class MLPC(nn.Module):
     # types: index of [word,sense,mu,entity]
     def run_embed(self, x, type):
         embeds = self.embeds[type](x)
-        embeds = F.dropout(embeds, self.embedding_dropout_rate, training=self.training)
+        embeds = F.dropout(embeds, self._dropout_rate, training=self.training)
         return embeds
 
     def getEmbFeatures(self, sents, q_emb=None):
@@ -110,7 +111,7 @@ class MLPC(nn.Module):
                 contexts2=None, candidates_entity=None, length=None):
         batch_size, cand_num, _ = base_feature.shape
         # to gpu
-        base_feature = to_gpu(Variable(torch.from_numpy(base_feature)))
+        base_feature = to_gpu(Variable(torch.from_numpy(base_feature))).float()
         contexts1 = to_gpu(Variable(torch.from_numpy(contexts1))).long()
         candidates = to_gpu(Variable(torch.from_numpy(candidates))).long()
 
@@ -144,26 +145,27 @@ class MLPC(nn.Module):
         cand_emb_expand = cand_emb.unsqueeze(1)
         cand_mu_emb_expand = cand_mu_emb.unsqueeze(1)
         # sense : context1
-        sim1 = torch.bmm(cand_emb_expand, f1_sense_emb.unsqueeze(2))
+        sim1 = torch.bmm(cand_emb_expand, f1_sense_emb.unsqueeze(2)).squeeze(2)
         # mu : context1
-        sim2 = torch.bmm(cand_mu_emb_expand, f1_mu_emb.unsqueeze(2))
+        sim2 = torch.bmm(cand_mu_emb_expand, f1_mu_emb.unsqueeze(2)).squeeze(2)
         # entity: context1
         if has_entity:
             cand_entity_emb_expand = cand_entity_emb.unsqueeze(1)
-            sim3 = torch.bmm(cand_entity_emb_expand, f1_entity_emb.unsqueeze(2))
+            sim3 = torch.bmm(cand_entity_emb_expand, f1_entity_emb.unsqueeze(2)).squeeze(2)
 
         # sense : context2
         if has_context2:
-            sim4 = torch.bmm(cand_emb_expand, f2_sense_emb.unsqueeze(2))
+            sim4 = torch.bmm(cand_emb_expand, f2_sense_emb.unsqueeze(2)).squeeze(2)
             # mu : context2
-            sim5 = torch.bmm(cand_mu_emb_expand, f2_mu_emb.unsqueeze(2))
+            sim5 = torch.bmm(cand_mu_emb_expand, f2_mu_emb.unsqueeze(2)).squeeze(2)
             # entity: context2
             if has_entity:
-                sim6 = torch.bmm(cand_entity_emb_expand, f2_entity_emb.unsqueeze(2))
+                sim6 = torch.bmm(cand_entity_emb_expand, f2_entity_emb.unsqueeze(2)).squeeze(2)
 
         # feature vec : batch * cand * feature_dim
         # feature dim: base_dim + sense_dim + word_dim + 2 + 1(if has entity) +
         # (2+word_dim)(if has contexts) + 1(if has context2 and has entity)
+        base_feature = base_feature.view(batch_size * cand_num, -1)
         h = torch.cat((base_feature, cand_emb, f1_sense_emb, sim1, sim2), dim=1)
         if has_entity:
             h = torch.cat((h, sim3), dim=1)
@@ -172,12 +174,7 @@ class MLPC(nn.Module):
             if has_entity:
                 h = torch.cat((h, sim6), dim=1)
 
-        if self.mlp_ln:
-            h = self.ln_inp(h)
-        if self.mlp_layer is not None:
-            h = self.mlp_layer(h)
-        h = F.dropout(h, self.drop_out_rate, training=self.training)
-        h = self.classifier(h)
+        h = self.mlp_classifier(h)
         # reshape, batch_size * cand_num
         h = h.view(batch_size, -1)
 

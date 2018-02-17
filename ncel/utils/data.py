@@ -8,7 +8,6 @@ import struct
 
 import numpy as np
 from ncel.utils.layers import buildGraph
-from ncel.utils.Candidates import resortCandidates
 
 from ncel.utils.misc import Accumulator
 
@@ -564,7 +563,7 @@ def PreprocessDataset(
         feature_manager.setBaseFeature(dataset[i])
     if logger is not None:
         logger.Log("After crop and filter: totally {} candidates of {} mentions in {} documents!".format(
-            sum([len(doc.n_candidates) for doc in dataset]), sum([len(doc.mentions) for doc in dataset]), len(dataset)))
+            sum([doc.n_candidates for doc in dataset]), sum([len(doc.mentions) for doc in dataset]), len(dataset)))
     return np.array(dataset)
 
 def MakeTrainingIterator(

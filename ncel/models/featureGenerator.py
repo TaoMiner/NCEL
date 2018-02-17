@@ -114,7 +114,7 @@ class FeatureGenerator:
                     max_pem = c.getEntityMentionPrior()
             for cand in m.candidates:
                 c_feature = self.getCandidateBaseFeature(cand, n_candidates, max_pem)
-                cand.setBaseFeature(np.array(c_feature))
+                cand.setBaseFeature(np.array(c_feature, dtype=float))
                 if self.base_feature_dim is None:
                     self.base_feature_dim = len(c_feature)
 

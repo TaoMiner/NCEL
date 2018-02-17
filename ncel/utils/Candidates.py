@@ -10,7 +10,7 @@ SOURCE = ['ppr','wiki_title', 'wiki_anchor', 'wiki_redirect', 'dictionary','yago
 
 class CandidatesHandler:
     def __init__(self, file, vocab=None, lowercase=False, id2label=None, label2id=None,
-                 support_fuzzy=True, redirect_vocab=None):
+                 support_fuzzy=True, redirect_vocab=None, topn=0):
         self._files = file.split(',')
         self._vocab = vocab         # mention vocab
         self._mention_dict = None       # {str:{ent:pem,...},...}
@@ -19,6 +19,8 @@ class CandidatesHandler:
         self._uni_mention_dict = None  # {str:{ent,...},...}
 
         self._candidates_total = 0
+
+        self._topn = topn
 
         self._lowercase=lowercase
         self._id2label = id2label
@@ -31,9 +33,9 @@ class CandidatesHandler:
             items = f.split(':')
             is_uniform, mention_dict, entity_set = self.loadCandidatesFromFile(items[0],items[1])
             if is_uniform:
-                self.addToUniformCandidates(mention_dict, entity_set)
+                self.addToUniformCandidates(mention_dict)
             else:
-                self.addToCandidates(mention_dict, entity_set)
+                self.addToCandidates(mention_dict)
         self.combineCandidates()
         self._candidates_total = sum([len(self._mention_dict[m]) for m in self._mention_dict])
 
@@ -48,10 +50,17 @@ class CandidatesHandler:
                         tmp_cands[c] = uni_prior
                     else: tmp_cands[c] = max(uni_prior, tmp_cands[c])
                 self._mention_dict[m] = tmp_cands
+        if self._entity_set is None:
+            self._entity_set = set()
         for m in self._mention_dict:
-            self.candidateSoftmax(self._mention_dict[m])
+            # sort
+            sort_cand = sorted(self._mention_dict[m].items(), key=lambda x: x[1], reverse=True)
+            if self._topn > 0:
+                sort_cand = sort_cand[:self._topn]
+            self._mention_dict[m] = self.candidateSoftmax(sort_cand)
+            self._entity_set.update([cand[0] for cand in sort_cand])
 
-    def addToUniformCandidates(self, mention_dict, entity_set):
+    def addToUniformCandidates(self, mention_dict):
         if self._uni_mention_dict is None:
             self._uni_mention_dict = {}
         for m in mention_dict:
@@ -64,12 +73,7 @@ class CandidatesHandler:
                 tmp_cand_set.add(ent_id)
             self._uni_mention_dict[m] = tmp_cand_set
 
-        if self._entity_set is None:
-            self._entity_set = entity_set
-        else:
-            self._entity_set.update(entity_set)
-
-    def addToCandidates(self, mention_dict, entity_set):
+    def addToCandidates(self, mention_dict):
         if self._mention_dict is None:
             self._mention_dict = {}
         for m in mention_dict:
@@ -85,11 +89,6 @@ class CandidatesHandler:
                     tmp_cands[ent_id] = max(tmp_cands[ent_id], mention_dict[m][c])
                 else : tmp_cands[ent_id] = mention_dict[m][c]
             self._mention_dict[m] = tmp_cands
-
-        if self._entity_set is None:
-            self._entity_set = entity_set
-        else:
-            self._entity_set.update(entity_set)
 
     # SOURCE = ['ppr','wiki_title', 'wiki_anchor', 'wiki_redirect', 'dictionary','yago','ncel']
     def loadCandidatesFromFile(self, type, filename):
@@ -124,14 +123,13 @@ class CandidatesHandler:
                 for c in self._mention_dict[m]:
                     fout.write("{}\t{}\t{}\n".format(m, self._mention_dict[m][c], c))
 
-    def candidateSoftmax(self, cand_dict):
-        total_prior = sum([cand_dict[c] for c in cand_dict])
+    def candidateSoftmax(self, cand_list):
+        total_prior = sum([cand[1] for cand in cand_list])
+        new_cands = []
         if total_prior > 0:
-            for c in cand_dict:
-                if len(cand_dict) > 1:
-                    cand_dict[c] = cand_dict[c] / total_prior
-                else: cand_dict[c] = 1.0
-        return cand_dict
+            for i, cand in enumerate(cand_list):
+                new_cands.append([cand[0], cand[1]/total_prior if len(cand_list) > 1 else 1.0])
+        return new_cands
 
     # wiki redirect
     def loadCandidatesFromWikiRedirect(self, filename):
@@ -299,14 +297,15 @@ class CandidatesHandler:
     # return an ordered candidates list
     def get_candidates_for_mention(self, mention, vocab=None, topn=0):
         assert self._mention_dict is not None, "load candidates first!"
-        cand_dict = self._mention_dict.get(mention._mention_str, {})
+        cand_list = self._mention_dict.get(mention._mention_str, [])
 
+        candidates = []
         # trim candidate sets by vocab
-        candidates = [Candidate(mention, c) for c in cand_dict if vocab is None or (vocab is not None and c in vocab)]
-        for i, c in enumerate(candidates):
-            candidates[i].setEntityMentionPrior(cand_dict[c.id])
-        # sort by prior
-        candidates = sorted(candidates, key=lambda x: x.getEntityMentionPrior(), reverse=True)
+        for i, cand in enumerate(cand_list):
+            if vocab is None or (vocab is not None and cand[0] in vocab):
+                c = Candidate(mention, cand[0])
+                c.setEntityMentionPrior(cand[1])
+                candidates.append(c)
         # crop by topn
         if topn > 0 and len(candidates) > topn:
             candidates = candidates[:topn]

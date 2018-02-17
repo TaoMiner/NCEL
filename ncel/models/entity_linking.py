@@ -65,8 +65,9 @@ def evaluate(FLAGS, model, eval_set, log_entry,
             show_sample=False
 
         # Calculate accuracy.
+        target = torch.from_numpy(y).long()
         batch_mentions, mention_correct, batch_docs, doc_acc_per_batch =\
-            ComputeAccuracy(output.data.cpu().numpy(), y, dataset_batch)
+            ComputeAccuracy(output, target, dataset_batch)
 
         A.add('mention_correct', mention_correct)
         A.add('mention_batch', batch_mentions)
@@ -167,30 +168,30 @@ def train_loop(
         # Reset cached gradients.
         trainer.optimizer_zero_grad()
 
-        # Run model. output: batch_size * node_num
+        # Run model. output: batch_size * max_cand_num
         output = model(context1, base, cids,
                        contexts2=context2, candidates_entity=cids_entity, length=num_candidates)
 
-        # Calculate accuracy.
-        batch_mentions, mention_correct, batch_docs, doc_acc_per_batch = \
-                            ComputeAccuracy(output.data.cpu().numpy(), y, doc_batch)
-
-        # y: batch_size * node_num
-        batch_size, max_candidates = y.shape
+        # y: batch_size
+        batch_size, max_candidates = output.size()
 
         # bce loss mask: batch_size * node_num
         mask2d = sequence_mask(num_candidates, max_candidates)
         vmask2d = Variable(mask2d, volatile=True).cuda()
 
-        target = torch.from_numpy(y).float().masked_select(mask2d)
+        target = torch.from_numpy(y).long()
+        # Calculate accuracy.
+        batch_mentions, mention_correct, batch_docs, doc_acc_per_batch = \
+            ComputeAccuracy(output, target, doc_batch)
 
         # Calculate loss.
         # todo: document level loss to mention level
-        bce_loss = nn.BCELoss()(output.masked_select(vmask2d), to_gpu(Variable(target, volatile=False)))
+        loss = nn.CrossEntropyLoss()(output.masked_select(vmask2d), to_gpu(Variable(target, volatile=False)))
+        # bce_loss = nn.BCELoss()(output.masked_select(vmask2d), to_gpu(Variable(target, volatile=False)))
         # for n,p in model.named_parameters():
         #   print('===========\nbefore gradient:{}\n----------\n{}'.format(n, p.grad))
         # Backward pass.
-        bce_loss.backward()
+        loss.backward()
         # for n,p in model.named_parameters():
         #     print('===========\nbefore gradient:{}\n----------\n{}'.format(n, p.grad))
         # Hard Gradient Clipping
@@ -209,7 +210,7 @@ def train_loop(
         A.add('total_time', total_time)
 
         if trainer.step % FLAGS.statistics_interval_steps == 0:
-            A.add('total_cost', bce_loss.data[0])
+            A.add('total_cost', loss.data[0])
             stats(model, trainer, A, log_entry)
             should_log = True
             progress_bar.finish()

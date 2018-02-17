@@ -67,30 +67,24 @@ def recursively_set_device(inp, gpu):
     return inp
 
 # batch_size * node_num, output
-# batch_size * node_num, y
+# batch_size , y
 def ComputeAccuracy(output, y, docs, include_unresolved=False):
-    batch_docs, max_candidates = y.shape
-    doc_acc = 0.0
-    total_mentions = 0
-    total_mention_correct = 0
+    total_mentions, max_cand_num = output.size()
+    batch_docs = len(docs)
 
+    # get the index of the max log-probability, batch_size
+    pred = output.data.max(1, keepdim=False)[1].cpu()
+    # batch_size
+    mention_correct = pred.eq(y)
+    doc_acc = 0.0
+    s = 0
     for i, doc in enumerate(docs):
-        dm_correct = 0
-        total_mentions += len(doc.mentions)
-        out_doc = output[i, :]
-        y_doc = y[i,:]
-        mc_start = 0
-        for j, mention in enumerate(doc.mentions):
-            mc_end = mc_start + len(mention.candidates)
-            output_slice = out_doc[mc_start:mc_end]
-            pred = np.argmax(output_slice)
-            pred_prob = output_slice[pred]
-            y_slice = y_doc[mc_start:mc_end]
-            if np.argmax(y_slice)==pred :
-                dm_correct += 1
-            mc_start = mc_end
-        total_mention_correct += dm_correct
-        doc_acc += dm_correct/float(len(doc.mentions))
+        e = s + len(doc.mentions)
+        d_mention_slice = mention_correct[s:e]
+        doc_acc += d_mention_slice.sum() / float(len(d_mention_slice))
+        s = e
+    total_mention_correct = mention_correct.sum()
+
     return total_mentions, total_mention_correct, batch_docs, doc_acc/float(batch_docs)
 
 # wiki_id \t wiki_label
