@@ -415,6 +415,7 @@ def EntityToIDs(entity_vocabulary, dataset, sense_vocab=None,
                 else:
                     if sense_vocab is not None and mention.gold_ent_id() in sense_vocab:
                         dataset[i].mentions[j]._gold_sense_id = sense_vocab[mention.gold_ent_id()]
+                    else : dataset[i].mentions[j]._gold_sense_id = unk_id
                     dataset[i].mentions[j]._gold_ent_id = entity_vocabulary[mention.gold_ent_id()]
             if mention._is_trainable:
                 # replace candidate id
@@ -426,6 +427,7 @@ def EntityToIDs(entity_vocabulary, dataset, sense_vocab=None,
                     if cand.id in entity_vocabulary:
                         if sense_vocab is not None and cand.id in sense_vocab:
                             dataset[i].mentions[j].candidates[k].setSense(sense_vocab[cand.id])
+                        else : dataset[i].mentions[j].candidates[k].setSense(unk_id)
                         dataset[i].mentions[j].candidates[k].id = entity_vocabulary[cand.id]
                         new_candidates.append(dataset[i].mentions[j].candidates[k])
                         # avg rank
@@ -454,21 +456,7 @@ def EntityToIDs(entity_vocabulary, dataset, sense_vocab=None,
                 (nil_num * 100.0 / m_num), nil_num, m_num))
     return dataset
 
-def CropMentionAndCandidates(dataset, max_candidates, topn=0, allow_cropping=True, logger=None):
-    # crop mention candidates according to topn
-    if topn > 0:
-        for i, doc in enumerate(dataset):
-            for j, ment in enumerate(doc.mentions):
-                if not ment._is_trainable: continue
-                cand_len = len(ment.candidates)
-                if cand_len > topn:
-                    cropped_candidates = resortCandidates(ment.candidates, topn=topn)
-                    if ment.gold_ent_id() not in [c.id for c in cropped_candidates]:
-                        dataset[i].mentions[j]._is_trainable = False
-                        dataset[i].n_candidates -= cand_len
-                    else:
-                        dataset[i].mentions[j].candidates = cropped_candidates
-                        dataset[i].n_candidates -= (cand_len-topn)
+def CropMentionAndCandidates(dataset, max_candidates, allow_cropping=True, logger=None):
     raw_doc_num = len(dataset)
     # over mention-candidate_pairs size that may be cropped
     cropped_dataset = [doc for doc in dataset if doc.n_candidates <= max_candidates]
@@ -558,7 +546,6 @@ def PreprocessDataset(
         max_candidates,
         feature_manager,
         stop_words={},
-        topn_candidate=0,
         logger=None,
         include_unresolved=False,
         allow_cropping=False):
@@ -571,32 +558,14 @@ def PreprocessDataset(
 
     dataset = EntityToIDs(entity_vocab, dataset, sense_vocab=sense_vocab,
                           include_unresolved=include_unresolved, logger=logger)
-    feature_manager.AddEmbeddingFeatures(dataset)
-    dataset = CropMentionAndCandidates(dataset, max_candidates, topn=topn_candidate, logger=logger)
+    dataset = CropMentionAndCandidates(dataset, max_candidates, logger=logger)
     # inspectDoc(dataset[0], word_vocab=word_vocabulary)
-    X = []
-    Y = []
-    All_adjs = []
-    Num_candidates = []
     for i, doc in enumerate(dataset):
-        x, candidate_ids, y = feature_manager.getFeatures(doc)
-        num_candidate = y.shape[0]
-        adj = buildGraph(candidate_ids, entity_embeddings)
-        # x: doc.n_candidates * feature_dim
-        # candidate_ids: doc.n_candidates
-        # y: doc.n_candidates
-        x, adj, y = PadDocument(x, adj, y, max_candidates, allow_cropping=allow_cropping)
-        X.append(x)
-        Y.append(y)
-        All_adjs.append(adj)
-        Num_candidates.append(num_candidate)
-    # corpus_size * mention_num * candidate*num
-    # np.array of documents
-    Num_candidates = np.array(Num_candidates)
+        feature_manager.setBaseFeature(dataset[i])
     if logger is not None:
         logger.Log("After crop and filter: totally {} candidates of {} mentions in {} documents!".format(
-            Num_candidates.sum(), sum([len(doc.mentions) for doc in dataset]), len(dataset)))
-    return np.array(X), np.array(All_adjs), np.array(Y), Num_candidates, np.array(dataset)
+            sum([len(doc.n_candidates) for doc in dataset]), sum([len(doc.mentions) for doc in dataset]), len(dataset)))
+    return np.array(dataset)
 
 def MakeTrainingIterator(
         sources,
@@ -604,7 +573,7 @@ def MakeTrainingIterator(
         smart_batches=True):
 
     def build_batches():
-        dataset_size = len(sources[0])
+        dataset_size = len(sources)
         order = list(range(dataset_size))
         random.shuffle(order)
         order = np.array(order)
@@ -619,7 +588,7 @@ def MakeTrainingIterator(
             # Put indices into buckets based on candidate size.
             keys = []
             for i in split:
-                n_candidates = sources[4][i].n_candidates
+                n_candidates = sources[i].n_candidates
                 keys.append((i, n_candidates))
             keys = sorted(keys, key=lambda __key: __key[1])
 
@@ -650,10 +619,10 @@ def MakeTrainingIterator(
                 order = list(range(num_batches))
                 random.shuffle(order)
             batch_indices = batches[order[idx]]
-            yield tuple(source[batch_indices] for source in sources)
+            yield sources[batch_indices]
 
     def data_iter():
-        dataset_size = len(sources[0])
+        dataset_size = len(sources)
         start = -1 * batch_size
         order = list(range(dataset_size))
         random.shuffle(order)
@@ -665,7 +634,7 @@ def MakeTrainingIterator(
                 start = 0
                 random.shuffle(order)
             batch_indices = order[start:start + batch_size]
-            yield tuple(source[batch_indices] for source in sources)
+            yield sources[batch_indices]
 
     train_iter = batch_iter if smart_batches else data_iter
 
@@ -681,7 +650,7 @@ def MakeEvalIterator(
 
     print("Warning: May be discarding eval examples at batch ends.")
 
-    dataset_size = len(sources[0])
+    dataset_size = len(sources)
     order = list(range(dataset_size))
     data_iter = []
     start = -batch_size
@@ -692,11 +661,10 @@ def MakeEvalIterator(
             break
 
         batch_indices = order[start:start + batch_size]
-        candidate_batch = tuple(source[batch_indices]
-                                for source in sources)
+        candidate_batch = sources[batch_indices]
 
-        if len(candidate_batch[0]) == batch_size:
+        if len(candidate_batch) == batch_size:
             data_iter.append(candidate_batch)
         else:
-            print("Skipping " + str(len(candidate_batch[0])) + " examples.")
+            print("Skipping " + str(len(candidate_batch)) + " examples.")
     return data_iter

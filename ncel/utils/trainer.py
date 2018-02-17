@@ -25,7 +25,7 @@ class ModelTrainer(object):
         self.model = model
         self.logger = logger
         self.epoch_length = epoch_length
-        self.word_vocab, self.entity_vocab, self.id2wiki_vocab = vocabulary
+        self.word_vocab, self.entity_vocab, self.sense_vocab, self.id2wiki_vocab = vocabulary
 
         self.logger.Log('One epoch is ' + str(self.epoch_length) + ' steps.')
 
@@ -45,10 +45,8 @@ class ModelTrainer(object):
         self.best_dev_step = 0
 
         # record best dev, test acc
-        self.best_dev_cacc = 0
         self.best_dev_macc = 0
         self.best_dev_dacc = 0
-        self.best_test_cacc = 0
         self.best_test_macc = 0
         self.best_test_dacc = 0
 
@@ -85,10 +83,8 @@ class ModelTrainer(object):
         self.best_dev_step = 0
 
         # record best dev, test acc
-        self.best_dev_cacc = 0
         self.best_dev_macc = 0
         self.best_dev_dacc = 0
-        self.best_test_cacc = 0
         self.best_test_macc = 0
         self.best_test_dacc = 0
 
@@ -124,9 +120,9 @@ class ModelTrainer(object):
 
     def new_accuracy(self, dev_acc, test_acc=None):
         # Track best dev error
-        dev_cacc, dev_macc, dev_dacc = dev_acc
+        dev_macc, dev_dacc = dev_acc
         if test_acc is not None:
-            test_cacc, test_macc, test_dacc = test_acc
+            test_macc, test_dacc = test_acc
         if (1 - dev_macc) < 0.99 * self.best_dev_error:
             self.best_dev_error = 1 - dev_macc
             self.best_dev_step = self.step
@@ -135,11 +131,9 @@ class ModelTrainer(object):
                     "Checkpointing with new best dev accuracy of %f" %
                     dev_macc)
                 self.save(self.best_checkpoint_path)
-            self.best_dev_cacc = dev_cacc
             self.best_dev_macc = dev_macc
             self.best_dev_dacc = dev_dacc
             if test_acc is not None:
-                self.best_test_cacc = test_cacc
                 self.best_test_macc = test_macc
                 self.best_test_dacc = test_dacc
 

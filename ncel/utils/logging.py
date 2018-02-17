@@ -31,16 +31,15 @@ def inspect(model):
 def finalStats(final_A, logger):
     # todo: average total candidates and mentions docs,time
     # time_metric = time_per_token(final_A.get('total_candidates'), A.get('total_time'))
-    logger.Log("dev best:\n cacc:{}, macc:{}, dacc:{}.".format(
-        final_A.get_avg('dev_cacc'), final_A.get_avg('dev_macc'), final_A.get_avg('dev_dacc')))
-    logger.Log("test best:\n cacc:{}, macc:{}, dacc:{}.".format(
-        final_A.get_avg('test_cacc'), final_A.get_avg('test_macc'), final_A.get_avg('test_dacc')))
+    logger.Log("dev best:\n macc:{}, dacc:{}.".format(
+                                    final_A.get_avg('dev_macc'), final_A.get_avg('dev_dacc')))
+    logger.Log("test best:\n macc:{}, dacc:{}.".format(
+                                    final_A.get_avg('test_macc'), final_A.get_avg('test_dacc')))
 
 def stats(model, trainer, A, log_entry):
     time_metric = time_per_token(A.get('total_candidates'), A.get('total_time'))
 
     log_entry.step = trainer.step
-    log_entry.candidate_accuracy = A.get_avg('candidate_acc')
     log_entry.mention_accuracy = A.get_avg('mention_acc')
     log_entry.document_accuracy = A.get_avg('doc_acc')
     log_entry.total_cost = A.get_avg('total_cost')  # not actual mean
@@ -50,10 +49,6 @@ def stats(model, trainer, A, log_entry):
     return log_entry
 
 def eval_stats(model, A, eval_data):
-    candidate_correct = A.get('candidate_correct')
-    batch_candidates = A.get('candidate_batch')
-    eval_data.eval_candidate_accuracy = sum(candidate_correct) / float(sum(batch_candidates))
-
     mention_correct = A.get('mention_correct')
     batch_mentions = A.get('mention_batch')
     eval_data.eval_mention_accuracy = sum(mention_correct) / float(sum(batch_mentions))
@@ -72,7 +67,7 @@ def train_format(log_entry):
     stats_str = "Step: {step}"
 
     # Accuracy Component.
-    stats_str += " Acc: cd {cand_acc:.5f} mt {ment_acc:.5f} dc {doc_acc:.5f}"
+    stats_str += " Acc: mt {ment_acc:.5f} dc {doc_acc:.5f}"
 
     # Cost Component.
     stats_str += " Cost: to {total_loss:.5f}"
@@ -84,7 +79,7 @@ def train_format(log_entry):
 
 
 def eval_format(evaluation):
-    eval_str = "Step: {step} Eval acc: cd {cand_acc:.5f} mt {ment_acc:.5f} dc {doc_acc:.5f} Time: {time:.5f}"
+    eval_str = "Step: {step} Eval acc: mt {ment_acc:.5f} dc {doc_acc:.5f} Time: {time:.5f}"
 
     return eval_str
 
@@ -92,7 +87,6 @@ def log_formatter(log_entry):
     """Defines the log string to print to std error."""
     args = {
         'step': log_entry.step,
-        'cand_acc': log_entry.candidate_accuracy,
         'ment_acc': log_entry.mention_accuracy,
         'doc_acc': log_entry.document_accuracy,
         'total_loss': log_entry.total_cost,
@@ -104,7 +98,6 @@ def log_formatter(log_entry):
         for evaluation in log_entry.evaluation:
             eval_args = {
                 'step': log_entry.step,
-                'cand_acc': evaluation.eval_candidate_accuracy,
                 'ment_acc': evaluation.eval_mention_accuracy,
                 'doc_acc': evaluation.eval_document_accuracy,
                 'time': evaluation.time_per_token_seconds,
@@ -123,8 +116,7 @@ def create_log_formatter():
 # --- Sample printing ---
 
 def print_samples(output, vocabulary, docs, only_one=False):
-    # TODO: Don't show padding.
-    word_vocab, entity_vocab, id2wiki_vocab = vocabulary
+    word_vocab, entity_vocab, sense_vocab, id2wiki_vocab = vocabulary
 
     ent_label_vocab = dict(
             [(entity_vocab[id], id2wiki_vocab[id]) for id in entity_vocab if id in id2wiki_vocab])
@@ -133,11 +125,11 @@ def print_samples(output, vocabulary, docs, only_one=False):
         [(word_vocab[key], key) for key in word_vocab if key in word_vocab])
 
     sample_sequences = []
-    batch_size, max_candidates, _ = output.shape
+    batch_size, max_candidates = output.shape
     for b in (list(range(batch_size)) if not only_one else [0]):
         doc_token_sequence = []
         doc = docs[b]
-        out_doc = output[b, :, 0]
+        out_doc = output[b, :]
         c_idx = 0
         start = 0
         for mention in doc.mentions:

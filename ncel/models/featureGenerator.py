@@ -23,6 +23,7 @@ class FeatureGenerator:
         if not self._split_by_sent and self._local_window == 0:
             self._split_by_sent = True
         self._feature_dim = None
+        self.base_feature_dim = None
 
     # batch * tokens
     def padTokens(self, sents, PAD=0):
@@ -102,9 +103,7 @@ class FeatureGenerator:
     def getFeatureDim(self):
         return self._feature_dim
 
-    def getBaseFeature(self, doc):
-        # (doc.n_candidates) * feature_num
-        features = []
+    def setBaseFeature(self, doc):
         for m in doc.mentions:
             # max prior
             max_pem = 0
@@ -113,16 +112,11 @@ class FeatureGenerator:
             for c in m.candidates:
                 if max_pem < c.getEntityMentionPrior():
                     max_pem = c.getEntityMentionPrior()
-
-            features.extend(self.getMentionBaseFeature(m, n_candidates, max_pem))
-        return features
-
-    def getMentionBaseFeature(self, mention, n_candidates, max_pme):
-        features = []
-        for cand in mention.candidates:
-            c_feature = self.getCandidateBaseFeature(cand, n_candidates, max_pme)
-            features.append(c_feature)
-        return features
+            for cand in m.candidates:
+                c_feature = self.getCandidateBaseFeature(cand, n_candidates, max_pem)
+                cand.setBaseFeature(np.array(c_feature))
+                if self.base_feature_dim is None:
+                    self.base_feature_dim = len(c_feature)
 
     def getCandidateBaseFeature(self, candidate, num_candidates, max_prior):
         # base feature_num

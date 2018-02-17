@@ -17,7 +17,7 @@ from ncel.models.base import get_flags, get_batch
 from ncel.models.base import init_model, log_path, flag_defaults
 from ncel.models.base import load_data_and_embeddings
 
-from ncel.utils.misc import Accumulator, EvalReporter, ComputeMentionAccuracy
+from ncel.utils.misc import Accumulator, EvalReporter, ComputeAccuracy
 
 from ncel.utils.layers import to_gpu
 
@@ -29,8 +29,6 @@ import torch.nn as nn
 from torch.autograd import Variable
 
 FLAGS = gflags.FLAGS
-
-NIL_THRED = 0.1
 
 def evaluate(FLAGS, model, eval_set, log_entry,
              logger, vocabulary=None, show_sample=False, eval_index=0, report_sample=False):
@@ -54,40 +52,33 @@ def evaluate(FLAGS, model, eval_set, log_entry,
     model.eval()
 
     for i, dataset_batch in enumerate(dataset):
-        batch = get_batch(dataset_batch)
-        eval_X_batch, eval_adj_batch, eval_y_batch, eval_num_candidates_batch, eval_doc_batch = batch
+        base, context1, context2, cids, cids_entity, num_candidates, y = get_batch(dataset_batch,
+                                FLAGS.local_context_window, use_lr_context=FLAGS.use_lr_context,
+                                split_by_sent=FLAGS.split_by_sent)
         # batch_candidates = eval_num_candidates_batch.sum()
-        # Run model.
-        output = model(eval_X_batch, eval_adj_batch, length=eval_num_candidates_batch)
+        # Run model. output: batch_size * node_num
+        output = model(context1, base, cids,
+                       contexts2=context2, candidates_entity=cids_entity, length=num_candidates)
 
         if show_sample:
-            samples = print_samples(output.data.cpu().numpy(), vocabulary, eval_doc_batch, only_one=True)
+            samples = print_samples(output.data.cpu().numpy(), vocabulary, dataset_batch, only_one=True)
             show_sample=False
 
-        # Calculate candidate accuracy.
-        # target = torch.from_numpy(eval_y_batch).long()
+        # Calculate accuracy.
+        batch_mentions, mention_correct, batch_docs, doc_acc_per_batch =\
+            ComputeAccuracy(output.data.cpu().numpy(), y, dataset_batch)
 
-        # get the index of the max log-probability
-        # pred = output.data.max(2, keepdim=False)[1].cpu()
-        # total_target = target.size(0) * target.size(1)
-        # candidate_correct = pred.eq(target).sum() - total_target + batch_candidates
-
-        # Calculate mention accuracy.
-        batch_candidates, candidate_correct, batch_mentions, mention_correct, batch_docs, doc_acc_per_batch =\
-            ComputeMentionAccuracy(output.data.cpu().numpy(), eval_y_batch, eval_doc_batch, NIL_thred=0.1)
-
-        A.add('candidate_correct', candidate_correct)
-        A.add('candidate_batch', batch_candidates)
         A.add('mention_correct', mention_correct)
         A.add('mention_batch', batch_mentions)
         A.add('macro_acc', doc_acc_per_batch)
         A.add('doc_batch', batch_docs)
 
         # Update Aggregate Accuracies
+        batch_candidates = num_candidates.sum()
         total_candidates += batch_candidates
 
         if FLAGS.write_eval_report and report_sample:
-            batch_samples = print_samples(output.data.cpu().numpy(), vocabulary, eval_doc_batch, only_one=False)
+            batch_samples = print_samples(output.data.cpu().numpy(), vocabulary, dataset_batch, only_one=False)
             reporter.save_batch(batch_samples)
 
         # Print Progress
@@ -113,11 +104,10 @@ def evaluate(FLAGS, model, eval_set, log_entry,
             ".report")
         reporter.write_report(eval_report_path)
 
-    eval_candidate_accuracy = eval_log.eval_candidate_accuracy
     eval_mention_accuracy = eval_log.eval_mention_accuracy
     eval_document_accuracy = eval_log.eval_document_accuracy
 
-    return eval_candidate_accuracy, eval_mention_accuracy, eval_document_accuracy
+    return eval_mention_accuracy, eval_document_accuracy
 
 # length: batch_size
 def sequence_mask(sequence_length, max_length):
@@ -166,21 +156,24 @@ def train_loop(
         should_log = False
 
         start = time.time()
+        doc_batch = next(training_data_iter)
 
-        batch = get_batch(next(training_data_iter))
-        x, adj, y, num_candidates, docs = batch
+        base, context1, context2, cids, cids_entity, num_candidates, y = get_batch(doc_batch,
+                                    FLAGS.local_context_window, use_lr_context=FLAGS.use_lr_context,
+                                    split_by_sent=FLAGS.split_by_sent)
 
         total_candidates = num_candidates.sum()
 
         # Reset cached gradients.
         trainer.optimizer_zero_grad()
 
-        # Run model. output: batch_size * node_num * 2
-        output = model(x, adj, length=num_candidates)
+        # Run model. output: batch_size * node_num
+        output = model(context1, base, cids,
+                       contexts2=context2, candidates_entity=cids_entity, length=num_candidates)
 
-        # Calculate mention accuracy.
-        batch_candidates, candidate_correct, batch_mentions, mention_correct, batch_docs, doc_acc_per_batch = \
-            ComputeMentionAccuracy(output.data.cpu().numpy(), y, docs, NIL_thred=NIL_THRED)
+        # Calculate accuracy.
+        batch_mentions, mention_correct, batch_docs, doc_acc_per_batch = \
+                            ComputeAccuracy(output.data.cpu().numpy(), y, doc_batch)
 
         # y: batch_size * node_num
         batch_size, max_candidates = y.shape
@@ -188,21 +181,16 @@ def train_loop(
         # bce loss mask: batch_size * node_num
         mask2d = sequence_mask(num_candidates, max_candidates)
         vmask2d = Variable(mask2d, volatile=True).cuda()
-        # cross loss mask: batch_size * node_num * 2
-        vmask3d = vmask2d.unsqueeze(2).expand(batch_size, max_candidates, 2).cuda()
 
         target = torch.from_numpy(y).float().masked_select(mask2d)
 
-        # cross loss t
         # Calculate loss.
-        xent_loss = nn.CrossEntropyLoss()(output.masked_select(vmask3d).view(-1, 2), to_gpu(Variable(target.long().view(-1), volatile=False)))
-        bce_loss = nn.BCELoss()(output[:,:,0].masked_select(vmask2d), to_gpu(Variable(target, volatile=False)))
-        bce_loss += nn.BCELoss()(output[:,:,1].masked_select(vmask2d), to_gpu(Variable(1-target, volatile=False)))
+        # todo: document level loss to mention level
+        bce_loss = nn.BCELoss()(output.masked_select(vmask2d), to_gpu(Variable(target, volatile=False)))
         # for n,p in model.named_parameters():
         #   print('===========\nbefore gradient:{}\n----------\n{}'.format(n, p.grad))
         # Backward pass.
-        loss = bce_loss + trainer.xling * xent_loss
-        loss.backward()
+        bce_loss.backward()
         # for n,p in model.named_parameters():
         #     print('===========\nbefore gradient:{}\n----------\n{}'.format(n, p.grad))
         # Hard Gradient Clipping
@@ -215,14 +203,13 @@ def train_loop(
 
         total_time = end - start
 
-        A.add('candidate_acc', candidate_correct/float(batch_candidates))
         A.add('mention_acc', mention_correct/float(batch_mentions))
         A.add('doc_acc', doc_acc_per_batch)
         A.add('total_candidates', total_candidates)
         A.add('total_time', total_time)
 
         if trainer.step % FLAGS.statistics_interval_steps == 0:
-            A.add('total_cost', loss.data[0])
+            A.add('total_cost', bce_loss.data[0])
             stats(model, trainer, A, log_entry)
             should_log = True
             progress_bar.finish()
@@ -249,10 +236,8 @@ def train_loop(
         progress_bar.step(i=(trainer.step % FLAGS.statistics_interval_steps) + 1,
                           total=FLAGS.statistics_interval_steps)
     # record train acc and eval acc
-    final_A.add('dev_cacc', trainer.best_dev_cacc)
     final_A.add('dev_macc', trainer.best_dev_macc)
     final_A.add('dev_dacc', trainer.best_dev_dacc)
-    final_A.add('test_cacc', trainer.best_test_cacc)
     final_A.add('test_macc', trainer.best_test_macc)
     final_A.add('test_dacc', trainer.best_test_dacc)
 
@@ -269,13 +254,13 @@ def run(only_forward=False):
 
     # Get Data and Embeddings
     vocabulary, initial_embeddings, training_data_iter, eval_iterators,\
-        training_data_length, feature_dim = load_data_and_embeddings(FLAGS, logger, candidate_handler)
+        training_data_length, base_feature_dim = load_data_and_embeddings(FLAGS, logger, candidate_handler)
 
     word_embeddings, entity_embeddings, sense_embeddings, mu_embeddings = initial_embeddings
 
     # Build model.
 
-    model = init_model(FLAGS, feature_dim, logger, header)
+    model = init_model(FLAGS, base_feature_dim, initial_embeddings, logger, header)
     epoch_length = int(training_data_length / FLAGS.batch_size)
     trainer = ModelTrainer(model, logger, epoch_length, vocabulary, FLAGS)
 

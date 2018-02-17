@@ -337,16 +337,13 @@ class Candidate():
         self._is_gold = False
         # base
         self._pem = DEFAULT_PRIOR
+        self._base = None
 
-        self._sense_context_sim = [DEFAULT_PRIOR] * 4
-        self._mu_context_sim = [DEFAULT_PRIOR] * 4
-        self._yamada_context_sim = [DEFAULT_PRIOR] * 2
-        # contextual
-        self._yamada_emb = None
-        self._sense_emb = None
-        self._sense_mu_emb = None
-        self._context_emb = [None] * 4
-        self._context_mu_emb = [None] * 4
+    def setBaseFeature(self, f):
+        self._base = f
+
+    def getBaseFeature(self):
+        return self._base
 
     def setSense(self, id):
         self._sense_id = id
@@ -356,52 +353,6 @@ class Candidate():
 
     def getMentionText(self):
         return self._mention._mention_str
-
-    def setContextSimilarity(self):
-        if self._sense_emb is not None:
-            for i in range(len(self._context_emb)):
-                if self._context_emb[i] is None : continue
-                self._sense_context_sim[i] = cosSim(self._sense_emb, self._context_emb[i])
-        if self._sense_mu_emb is not None:
-            for i in range(len(self._context_mu_emb)):
-                if self._context_mu_emb[i] is None : continue
-                self._mu_context_sim[i] = cosSim(self._sense_mu_emb, self._context_mu_emb[i])
-
-    def setYamadaSimilarity(self):
-        if self._yamada_emb is not None:
-            for i in range(len(self._mention.context_emb)):
-                if self._mention.context_emb[i] is None : continue
-                self._yamada_context_sim[i] = cosSim(self._yamada_emb, self._mention.context_emb[i])
-
-    def setSenseEmbeddings(self, emb):
-        self._sense_emb = emb
-
-    def setSenseMuEmbeddings(self, emb):
-        self._sense_mu_emb = emb
-
-    def setLeftContextEmbeddings(self, emb, is_mu):
-        if is_mu:
-            self._context_mu_emb[0] = emb
-        else:
-            self._context_emb[0] = emb
-
-    def setRightContextEmbeddings(self, emb, is_mu):
-        if is_mu:
-            self._context_mu_emb[1] = emb
-        else:
-            self._context_emb[1] = emb
-
-    def setLeftSentEmbeddings(self, emb, is_mu):
-        if is_mu:
-            self._context_mu_emb[2] = emb
-        else:
-            self._context_emb[2] = emb
-
-    def setRightSentEmbeddings(self, emb, is_mu):
-        if is_mu:
-            self._context_mu_emb[3] = emb
-        else:
-            self._context_emb[3] = emb
 
     def getMention(self):
         return self._mention
@@ -417,48 +368,3 @@ class Candidate():
 
     def getEntityMentionPrior(self):
         return self._pem
-
-    def getSenseContextSim(self):
-        return self._sense_context_sim[:2]
-
-    def getMuContextSim(self):
-        return self._mu_context_sim[:2]
-
-    def getYamadaContextSim(self):
-        return self._yamada_context_sim[:2]
-
-    def getSenseSentSim(self):
-        return self._sense_context_sim[2:]
-
-    def getMuSentSim(self):
-        return self._mu_context_sim[2:]
-
-    def getContextEmb(self):
-        return self._context_emb[:2]
-
-    def getSentEmb(self):
-        return self._context_emb[2:]
-
-    def getMuContextEmb(self):
-        return self._context_mu_emb[:2]
-
-    def getMuSentEmb(self):
-        return self._context_mu_emb[2:]
-
-    def getYamadaContextEmb(self):
-        return self._mention.context_emb
-
-
-NUM_PRIOR = 5
-# candidates is a list
-def resortCandidates(candidates, topn=NUM_PRIOR+2):
-    new_candidates = candidates
-    if topn > 0:
-        topn_prior = NUM_PRIOR
-        topn_sim = topn-NUM_PRIOR
-
-        candidates = sorted(candidates, key=lambda x:x.getEntityMentionPrior(), reverse=True)
-        new_candidates = candidates[:topn_prior]
-        tmp_candidates = sorted(candidates[topn_prior:], key=lambda x: x._mu_context_sim[1], reverse=True)
-        new_candidates += tmp_candidates[:topn_sim]
-    return new_candidates

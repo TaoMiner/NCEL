@@ -16,6 +16,7 @@ from ncel.utils.model_reader import ModelReader
 from ncel.utils.misc import loadWikiVocab, loadRedirectVocab, loadStopWords
 
 import ncel.models.ncel as ncel
+import ncel.models.mlp as mlp
 
 from functools import reduce
 
@@ -23,7 +24,6 @@ import torch
 
 FLAGS = gflags.FLAGS
 
-MAX_CANDIDATES = 30
 YAMADA_DIM = 300
 
 DATA_TYPE = ["conll",
@@ -44,22 +44,83 @@ def log_path(FLAGS, load=False):
     en = FLAGS.load_experiment_name if load else FLAGS.experiment_name
     return os.path.join(lp, en) + ".log"
 
-def get_batch(batch):
-    # x: batch_size * max_candidates * feature_dim
-    # adj : batch_size * max_candidates * max_candidates
-    # y: batch_size * max_candidates
-    # num_candidates: batch_size
-    # docs: batch_size
-    x, adj, y, num_candidates, docs = batch
+# contexts1 : batch * cand_num * tokens
+# contexts2 : batch * cand_num * tokens
+# base_feature : batch * cand_num * features
+# candidates : batch * cand_num
+# candidates_entity: batch * cand_num
+# length: batch
+# truth: batch * cand_num
+def get_batch(batch, local_window, use_lr_context=True, split_by_sent=True):
+    docs = batch
+    num_candidates = np.array([doc.n_candidates for doc in docs])
+    max_cand_num = np.max(num_candidates)
 
-    max_length = np.max(num_candidates)
+    token_pad = 0
+    feature_pad = 0.0
+    base_feature_dim = -1
 
-    # Truncate batch.
-    x_batch = x[:, :max_length, :]
-    adj_batch = adj[:, :max_length, :max_length]
-    y_batch = y[:, :max_length]
+    C1 = []
+    C2 = []
+    B = []
+    CID = []
+    CID_entity = []
+    Y = []
+    for doc in docs:
+        count = 0
+        con1 = []
+        con2 = []
+        base = []
+        cids = []
+        cids_entity = []
+        y = []
+        for m in doc.mentions:
+            tmp_con1 = m.left_context(max_len=local_window, split_by_sent=split_by_sent)
+            diff = local_window - len(tmp_con1)
+            if diff > 0:
+                tmp_con1 += [token_pad] * diff
 
-    return x_batch, adj_batch, y_batch, num_candidates, docs
+            tmp_con2 = m.right_context(max_len=local_window, split_by_sent=split_by_sent)
+            diff = local_window - len(tmp_con2)
+            if diff > 0:
+                tmp_con2 += [token_pad] * diff
+
+            for c in m.candidates:
+                base.append(c.getBaseFeature())
+                if base_feature_dim <= 0: base_feature_dim = len(c.getBaseFeature())
+                con1.append(tmp_con1)
+                con2.append(tmp_con2)
+                cids.append(c._sense_id)
+                cids_entity.append(c.id)
+                y.append(1 if c.getIsGlod() else 0)
+                count += 1
+        # padding current doc candidate to max_cand_num
+        paddings = max_cand_num - count
+        assert paddings >= 0, "doc.n_candidates error!"
+        if paddings > 0:
+            base_vec = [feature_pad] * base_feature_dim
+            token_vec = [token_pad] * local_window
+            for i in range(paddings):
+                base.append(base_vec)
+                con1.append(token_vec)
+                con2.append(token_vec)
+                cids.append(token_pad)
+                cids_entity.append(token_pad)
+                y.append(0)
+        B.append(base)
+        C1.append(con1)
+        C2.append(con2)
+        CID.append(cids)
+        CID_entity.append(cids_entity)
+        Y.append(y)
+
+    C1 = np.array(C1)
+    C2 = np.array(C2)
+    if not use_lr_context:
+        C1 = np.concatenate((C1, C2), axis=2)
+        C2 = None
+
+    return np.array(B), C1, C2, np.array(CID), np.array(CID_entity), num_candidates, np.array(Y)
 
 # todo: cropping over length docs when load data, may be not cropped
 def get_data_manager(data_type):
@@ -81,12 +142,12 @@ def get_data_manager(data_type):
 
 def get_feature_manager(embeddings, embedding_dim,
                  str_sim=True, prior=True, hasAtt=True,
-                 local_context_window=5, global_context_window=5, ntee_model=None):
+                 local_context_window=5, global_context_window=5):
 
     return FeatureGenerator(embeddings, embedding_dim,
                      str_sim=str_sim, prior=prior, hasAtt=hasAtt,
                  local_context_window=local_context_window,
-                global_context_window=global_context_window, ntee_model=ntee_model)
+                global_context_window=global_context_window)
 
 def unwrapDataset(data_tuples):
     datasets = data_tuples.split(",")
@@ -235,7 +296,7 @@ def load_data_and_embeddings(
     eval_sets = []
     for i, raw_eval_data in enumerate(raw_eval_sets):
         logger.Log("Processing {} raw eval data ...".format(i))
-        AddCandidatesToDocs(raw_eval_sets[i], candidate_handler, topn=MAX_CANDIDATES,
+        AddCandidatesToDocs(raw_eval_sets[i], candidate_handler, topn=FLAGS.topn_candidate,
                             vocab=entity_vocab, logger=logger,
                             include_unresolved=FLAGS.include_unresolved)
         eval_data = PreprocessDataset(raw_eval_sets[i],
@@ -245,7 +306,6 @@ def load_data_and_embeddings(
                                       FLAGS.max_candidates_per_document,
                                       feature_manager,
                                       stop_words=stop_words,
-                                      topn_candidate=FLAGS.topn_candidate,
                                       logger=logger,
                                       include_unresolved=FLAGS.include_unresolved,
                                       allow_cropping=FLAGS.allow_cropping)
@@ -254,7 +314,7 @@ def load_data_and_embeddings(
     training_data_length = 0
     if raw_training_data is not None:
         logger.Log("Processing raw training data ...")
-        AddCandidatesToDocs(raw_training_data, candidate_handler, topn=MAX_CANDIDATES,
+        AddCandidatesToDocs(raw_training_data, candidate_handler, topn=FLAGS.topn_candidate,
                             vocab=entity_vocab, logger=logger,
                             include_unresolved=FLAGS.include_unresolved)
         training_data = PreprocessDataset(raw_training_data,
@@ -264,11 +324,10 @@ def load_data_and_embeddings(
                                           FLAGS.max_candidates_per_document,
                                           feature_manager,
                                           stop_words=stop_words,
-                                          topn_candidate=FLAGS.topn_candidate,
                                           logger=logger,
                                           include_unresolved=FLAGS.include_unresolved,
                                           allow_cropping=FLAGS.allow_cropping)
-        training_data_length = training_data[0].shape[0]
+        training_data_length = training_data.shape[0]
         training_data_iter = MakeTrainingIterator(training_data, FLAGS.batch_size, FLAGS.smart_batching)
     logger.Log("Processing raw eval data ...")
     eval_iterators = []
@@ -277,10 +336,7 @@ def load_data_and_embeddings(
             eval_data,
             FLAGS.batch_size)
         eval_iterators.append(eval_it)
-
-    feature_dim = feature_manager.getFeatureDim()
-
-    return vocabulary, initial_embeddings, training_data_iter, eval_iterators, training_data_length, feature_dim
+    return vocabulary, initial_embeddings, training_data_iter, eval_iterators, training_data_length, feature_manager.base_feature_dim
 
 
 # python entity_linking.py -log_path -experiment_name -cross_validation -data_type -genre
@@ -359,9 +415,11 @@ def get_flags():
         "allow_cropping",
         False,
         "Trim overly long training examples to fit. If not set, skip them.")
-    gflags.DEFINE_integer("max_tokens", 200, "")
+    gflags.DEFINE_integer("max_tokens", 500, "")
     gflags.DEFINE_integer("max_candidates_per_document", 200, "")
-    gflags.DEFINE_integer("topn_candidate", 7, "Use all candidates if set 0.")
+    gflags.DEFINE_integer("topn_candidate", 30, "Use all candidates if set 0.")
+    gflags.DEFINE_boolean("use_lr_context", True, "Use left and right context.")
+    gflags.DEFINE_boolean("split_by_sent", True, "extract context by sent.")
 
     # KBP data
     gflags.DEFINE_string(
@@ -500,17 +558,20 @@ def flag_defaults(FLAGS, load_log_flags=False):
 
 def init_model(
         FLAGS,
-        feature_dim,
+        base_feature_dim,
+        initial_embeddings,
         logger,
         logfile_header=None):
     # Choose model.
     logger.Log("Building model.")
     if FLAGS.model_type == "NCEL":
         build_model = ncel.build_model
+    elif FLAGS.model_type == "MLP":
+        build_model = mlp.build_model
     else:
         raise NotImplementedError
 
-    model = build_model(feature_dim, FLAGS)
+    model = build_model(base_feature_dim, initial_embeddings, FLAGS)
 
     # Debug
     def set_debug(self):
