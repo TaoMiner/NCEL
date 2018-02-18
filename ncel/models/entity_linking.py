@@ -17,7 +17,7 @@ from ncel.models.base import get_flags, get_batch
 from ncel.models.base import init_model, log_path, flag_defaults
 from ncel.models.base import load_data_and_embeddings
 
-from ncel.utils.misc import Accumulator, EvalReporter, ComputeAccuracy
+from ncel.utils.misc import Accumulator, EvalReporter, ComputeAccuracy, inspectBatch
 
 from ncel.utils.layers import to_gpu
 
@@ -158,10 +158,11 @@ def train_loop(
 
         start = time.time()
         doc_batch = next(training_data_iter)
-
-        base, context1, context2, cids, cids_entity, num_candidates, y = get_batch(doc_batch,
-                                    FLAGS.local_context_window, use_lr_context=FLAGS.use_lr_context,
+        batch = get_batch(doc_batch, FLAGS.local_context_window, use_lr_context=FLAGS.use_lr_context,
                                     split_by_sent=FLAGS.split_by_sent)
+        base, context1, context2, cids, cids_entity, num_candidates, y = batch
+        # check training data
+        inspectBatch(batch, vocabulary, doc_batch)
 
         total_candidates = num_candidates.sum()
 
@@ -172,21 +173,13 @@ def train_loop(
         output = model(context1, base, cids,
                        contexts2=context2, candidates_entity=cids_entity, length=num_candidates)
 
-        # y: batch_size
-        batch_size, max_candidates = output.size()
-
-        # bce loss mask: batch_size * node_num
-        mask2d = sequence_mask(num_candidates, max_candidates)
-        vmask2d = Variable(mask2d, volatile=True).cuda()
-
         target = torch.from_numpy(y).long()
         # Calculate accuracy.
         batch_mentions, mention_correct, batch_docs, doc_acc_per_batch = \
             ComputeAccuracy(output, target, doc_batch)
 
         # Calculate loss.
-        # todo: document level loss to mention level
-        loss = nn.CrossEntropyLoss()(output.masked_select(vmask2d), to_gpu(Variable(target, volatile=False)))
+        loss = nn.CrossEntropyLoss()(output, to_gpu(Variable(target, volatile=False)))
         # bce_loss = nn.BCELoss()(output.masked_select(vmask2d), to_gpu(Variable(target, volatile=False)))
         # for n,p in model.named_parameters():
         #   print('===========\nbefore gradient:{}\n----------\n{}'.format(n, p.grad))

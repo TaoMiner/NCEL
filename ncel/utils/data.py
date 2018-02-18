@@ -458,46 +458,47 @@ def EntityToIDs(entity_vocabulary, dataset, sense_vocab=None,
 def CropMentionAndCandidates(dataset, max_candidates, allow_cropping=True, logger=None):
     raw_doc_num = len(dataset)
     # over mention-candidate_pairs size that may be cropped
-    cropped_dataset = [doc for doc in dataset if doc.n_candidates <= max_candidates]
+    if max_candidates > 0:
+        cropped_dataset = [doc for doc in dataset if doc.n_candidates <= max_candidates]
 
-    diff_doc = raw_doc_num - len(cropped_dataset)
+        diff_doc = raw_doc_num - len(cropped_dataset)
 
-    if not allow_cropping:
-        if logger and diff_doc > 0:
-            logger.Log(
-                "Discarding " +
-                str(diff_doc) +
-                " candidate over-length documents.")
-        dataset = cropped_dataset
-    else:
-        if logger and diff_doc > 0:
-            logger.Log(
-                "Cropping " +
-                str(diff_doc) +
-                " candidate over-length documents.")
+        if not allow_cropping:
+            if logger and diff_doc > 0:
+                logger.Log(
+                    "Discarding " +
+                    str(diff_doc) +
+                    " candidate over-length documents.")
+            dataset = cropped_dataset
+        else:
+            if logger and diff_doc > 0:
+                logger.Log(
+                    "Cropping " +
+                    str(diff_doc) +
+                    " candidate over-length documents.")
 
-        cropped_m = 0
-        cropped_d = 0
+            cropped_m = 0
+            cropped_d = 0
 
-        for i, doc in enumerate(dataset):
-            # crop candidate over length doc by make mention intrainable
-            if doc.n_candidates > max_candidates:
-                candidate_length_set = [[m_idx, len(m.candidates)] for m_idx, m in enumerate(doc.mentions)]
-                cropped_d += 1
-                c2s_ms = sorted(candidate_length_set, key=lambda x: x[1], reverse=True)
-                diff = doc.n_candidates - max_candidates
-                p = -1
-                while diff > 0 and p < len(c2s_ms)-1:
-                    p += 1
-                    if not dataset[i].mentions[c2s_ms[p][0]]._is_trainable : continue
-                    dataset[i].mentions[c2s_ms[p][0]]._is_trainable = False
-                    cropped_m += 1
-                    tmp_clen = len(doc.mentions[c2s_ms[p][0]].candidates)
-                    diff -= tmp_clen
-                    dataset[i].n_candidates -= tmp_clen
-                if p == len(c2s_ms)-1 : dataset[i].n_candidates = 0
+            for i, doc in enumerate(dataset):
+                # crop candidate over length doc by make mention intrainable
+                if doc.n_candidates > max_candidates:
+                    candidate_length_set = [[m_idx, len(m.candidates)] for m_idx, m in enumerate(doc.mentions)]
+                    cropped_d += 1
+                    c2s_ms = sorted(candidate_length_set, key=lambda x: x[1], reverse=True)
+                    diff = doc.n_candidates - max_candidates
+                    p = -1
+                    while diff > 0 and p < len(c2s_ms)-1:
+                        p += 1
+                        if not dataset[i].mentions[c2s_ms[p][0]]._is_trainable : continue
+                        dataset[i].mentions[c2s_ms[p][0]]._is_trainable = False
+                        cropped_m += 1
+                        tmp_clen = len(doc.mentions[c2s_ms[p][0]].candidates)
+                        diff -= tmp_clen
+                        dataset[i].n_candidates -= tmp_clen
+                    if p == len(c2s_ms)-1 : dataset[i].n_candidates = 0
 
-        logger.Log("Actual cropped {} mentions of {} documents! ".format(cropped_m, cropped_d))
+            logger.Log("Actual cropped {} mentions of {} documents! ".format(cropped_m, cropped_d))
 
     dataset = [doc for doc in dataset if doc.n_candidates > 0]
     for i, doc in enumerate(dataset):

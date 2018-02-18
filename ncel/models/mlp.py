@@ -12,9 +12,9 @@ from ncel.utils.layers import Embed, to_gpu, MLPClassifier
 
 def build_model(base_feature_dim, initial_embeddings, FLAGS):
     model_cls = MLPC
-    layers_dim = [256]
+    layers_dim = [1000]
     use_contexts2 = FLAGS.use_lr_context
-    use_entity = False
+    use_entity = True
     use_att = FLAGS.att
     return model_cls(
         base_feature_dim,
@@ -166,11 +166,11 @@ class MLPC(nn.Module):
         # feature dim: base_dim + sense_dim + word_dim + 2 + 1(if has entity) +
         # (2+word_dim)(if has contexts) + 1(if has context2 and has entity)
         base_feature = base_feature.view(batch_size * cand_num, -1)
-        h = torch.cat((base_feature, cand_emb, f1_sense_emb, sim1, sim2), dim=1)
+        h = torch.cat((base_feature, cand_entity_emb, f1_entity_emb, sim1, sim2), dim=1)
         if has_entity:
             h = torch.cat((h, sim3), dim=1)
         if has_context2:
-            h = torch.cat((h, sim4, sim5, f2_sense_emb), dim=1)
+            h = torch.cat((h, sim4, sim5, f2_entity_emb), dim=1)
             if has_entity:
                 h = torch.cat((h, sim6), dim=1)
 

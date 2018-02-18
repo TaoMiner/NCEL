@@ -74,7 +74,6 @@ def get_batch(batch, local_window, use_lr_context=True, split_by_sent=True):
             base = []
             cids = []
             cids_entity = []
-            y = []
             # pad tokens
             tmp_con1 = m.left_context(max_len=local_window, split_by_sent=split_by_sent)
             diff = local_window - len(tmp_con1)
@@ -108,7 +107,6 @@ def get_batch(batch, local_window, use_lr_context=True, split_by_sent=True):
                     con2.append(token_vec)
                     cids.append(token_pad)
                     cids_entity.append(token_pad)
-                    y.append(0)
             B.append(base)
             C1.append(con1)
             C2.append(con2)

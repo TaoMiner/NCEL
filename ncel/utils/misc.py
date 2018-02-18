@@ -149,3 +149,44 @@ def inspectDoc(doc, word_vocab=None):
             print("right_contexts:{}.".format(' '.join(m.right_context(max_len=5))))
             print("left_sent:{}.".format(' '.join([w for s in m.left_sent(max_len=1) for w in s])))
             print("right_sent:{}.".format(' '.join([w for s in m.right_sent(max_len=1) for w in s])))
+
+
+# contexts1 : batch * cand_num * tokens
+# contexts2 : batch * cand_num * tokens
+# base_feature : batch * cand_num * features
+# candidates : batch * cand_num
+# candidates_entity: batch * cand_num
+# length: batch
+# truth: batch
+def inspectBatch(batch, vocab, docs, only_one=True):
+    base, context1, context2, cids, cids_entity, num_candidates, y = batch
+    word_vocab, entity_vocab, sense_vocab, id2wiki_vocab = vocab
+    # reverse vocab
+    word_label_vocab = dict(
+        [(word_vocab[key], key) for key in word_vocab if key in word_vocab])
+    sense_id_vocab = dict(
+        [(sense_vocab[key], key) for key in sense_vocab if key in sense_vocab])
+    entity_id_vocab = dict(
+        [(entity_vocab[key], key) for key in entity_vocab if key in entity_vocab])
+
+    batch_size, cand_num = cids.shape
+    print("batch_size:{}, candidate num:{}".format(batch_size, cand_num))
+    show_cand_num = -1
+    for i in range(batch_size):
+        inspectDoc(docs[i], word_vocab=word_vocab)
+        count = 0
+        print("num_cand:{}, truth:{}".format(num_candidates[i], y[i]))
+        for j in range(cand_num):
+            print("base:{}".format(base[i][j]))
+            print("context1:{}".format(' '.join([word_label_vocab[w] for w in context1[i][j]])))
+            if context2 is not None:
+                print("context2:{}".format(' '.join([word_label_vocab[w] for w in context2[i][j]])))
+            sense_label = id2wiki_vocab[sense_id_vocab[cids[i][j]]] if sense_id_vocab[cids[i][j]] in id2wiki_vocab else ''
+            print("cids:{}".format(sense_label))
+            entity_label = id2wiki_vocab[entity_id_vocab[cids_entity[i][j]]] if entity_id_vocab[
+                                           cids_entity[i][j]] in id2wiki_vocab else ''
+            print("cids_entity:{}".format(entity_label))
+            count+=1
+            if show_cand_num>0 and count == show_cand_num: break
+
+        if only_one: break
