@@ -19,6 +19,10 @@ CORE_VOCABULARY = {PADDING_TOKEN: 0}
 
 PADDING_ID = CORE_VOCABULARY[PADDING_TOKEN]
 
+PADDING_ENTITY = "_EPAD"
+UNK_ENTITY = "_E_"
+CORE_ENTITY_VOCABULARY = {PADDING_ENTITY: 0, UNK_ENTITY: 1}
+
 class SimpleProgressBar(object):
     """ Simple Progress Bar and Timing Snippet
     """
@@ -95,6 +99,85 @@ def statsCandidates(A, logger=None):
         logger.Log("avg gold rank 30:{}/{}, 50:{}/{}, large:{}/{}.".format(avg_rank_30, rank_count_30_avg+rank_count_30,
                        avg_rank_50,rank_count_50_avg+rank_count_50, avg_rank_large, rank_count_large+rank_count_large_avg))
 
+# contexts1 : batch * cand_num * tokens
+# contexts2 : batch * cand_num * tokens
+# base_feature : batch * cand_num * features
+# candidates : batch * cand_num
+# candidates_entity: batch * cand_num
+# length: batch
+# truth: batch
+def get_batch(batch, local_window, use_lr_context=True, split_by_sent=True):
+    docs = batch
+    num_candidates = np.array([len(m.candidates) for doc in docs for m in doc.mentions])
+    max_cand_num = max(num_candidates)
+
+    token_pad = CORE_VOCABULARY[PADDING_TOKEN]
+    entity_pad = CORE_ENTITY_VOCABULARY[PADDING_ENTITY]
+    feature_pad = 0.0
+    base_feature_dim = -1
+
+    C1 = []
+    C2 = []
+    B = []
+    CID = []
+    CID_entity = []
+    Y = []
+
+    for doc in docs:
+        for m in doc.mentions:
+            con1 = []
+            con2 = []
+            base = []
+            cids = []
+            cids_entity = []
+            # pad tokens
+            tmp_con1 = m.left_context(max_len=local_window, split_by_sent=split_by_sent)
+            diff = local_window - len(tmp_con1)
+            if diff > 0:
+                tmp_con1 += [token_pad] * diff
+
+            tmp_con2 = m.right_context(max_len=local_window, split_by_sent=split_by_sent)
+            diff = local_window - len(tmp_con2)
+            if diff > 0:
+                tmp_con2 += [token_pad] * diff
+
+            gold_idx = -1
+            for i, c in enumerate(m.candidates):
+                base.append(c.getBaseFeature())
+                if base_feature_dim <= 0: base_feature_dim = len(c.getBaseFeature())
+                con1.append(tmp_con1)
+                con2.append(tmp_con2)
+                cids.append(c._sense_id)
+                cids_entity.append(c.id)
+                if c.getIsGlod():
+                    gold_idx = i
+            assert gold_idx >= 0, "Error: no gold candidate!"
+            # padding current mention candidate to max_cand_num
+            paddings = max_cand_num - len(m.candidates)
+            if paddings > 0:
+                base_vec = [feature_pad] * base_feature_dim
+                token_vec = [token_pad] * local_window
+                for i in range(paddings):
+                    base.append(base_vec)
+                    con1.append(token_vec)
+                    con2.append(token_vec)
+                    cids.append(entity_pad)
+                    cids_entity.append(entity_pad)
+            B.append(base)
+            C1.append(con1)
+            C2.append(con2)
+            CID.append(cids)
+            CID_entity.append(cids_entity)
+            Y.append(gold_idx)
+
+    C1 = np.array(C1)
+    C2 = np.array(C2)
+    if not use_lr_context:
+        C1 = np.concatenate((C1, C2), axis=2)
+        C2 = None
+
+    return np.array(B), C1, C2, np.array(CID), np.array(CID_entity), num_candidates, np.array(Y)
+
 def AddCandidatesToDocs(dataset, candidate_handler, vocab=None, topn=0,
                         include_unresolved=False, logger=None):
     for i, doc in enumerate(dataset):
@@ -140,12 +223,12 @@ def BuildEntityVocabulary(candidate_entities, entity_embedding_file, sense_embed
     logger.Log("Found " + str(len(candidate_entities)) + " entity types.")
 
     entity_vocabulary = BuildVocabularyForBinaryEmbeddingFile(
-        entity_embedding_file, candidate_entities, CORE_VOCABULARY)
+        entity_embedding_file, candidate_entities, CORE_ENTITY_VOCABULARY)
 
     # Build a vocabulary of entities in the data for which we have an
     # embedding.
     sense_vocabulary = BuildVocabularyForBinaryEmbeddingFile(sense_embedding_file,
-                        candidate_entities, CORE_VOCABULARY, isSense=True) if sense_embedding_file is not None else None
+                        candidate_entities, CORE_ENTITY_VOCABULARY, isSense=True) if sense_embedding_file is not None else None
 
     return entity_vocabulary, sense_vocabulary
 
@@ -367,8 +450,8 @@ def TokensToIDs(word_vocabulary, dataset, stop_words=None, logger=None):
 def EntityToIDs(entity_vocabulary, dataset, sense_vocab=None,
                 include_unresolved=False, logger=None):
 
-    if UNK_TOKEN in CORE_VOCABULARY:
-        unk_id = CORE_VOCABULARY[UNK_TOKEN]
+    if UNK_ENTITY in CORE_ENTITY_VOCABULARY:
+        unk_id = CORE_ENTITY_VOCABULARY[UNK_ENTITY]
     else: unk_id = -1
     # avg rank
     # A = Accumulator(maxlen=500)
@@ -389,6 +472,8 @@ def EntityToIDs(entity_vocabulary, dataset, sense_vocab=None,
                 m_unk += 1
                 continue
             if include_unresolved and mention._is_NIL:
+                # todo: can't deal with NIL due to classification no gold
+                mention._is_trainable = False
                 dataset[i].mentions[j]._gold_ent_id = unk_id
                 nil_num += 1
             elif not include_unresolved and mention._is_NIL:
@@ -432,6 +517,7 @@ def EntityToIDs(entity_vocabulary, dataset, sense_vocab=None,
                         # avg rank
                         # if cand.getIsGlod(): rank = k
                     else:
+                        dataset[i].mentions[j].candidates[k].id = unk_id
                         c_unk += 1
                         if cand.getIsGlod():
                             no_gold_cand += 1

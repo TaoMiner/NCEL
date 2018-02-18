@@ -7,13 +7,13 @@ import time
 import gflags
 
 from ncel.utils import afs_safe_logger
-from ncel.utils.data import SimpleProgressBar
+from ncel.utils.data import SimpleProgressBar, get_batch
 from ncel.utils.logging import stats, create_log_formatter
 from ncel.utils.logging import eval_stats, print_samples, finalStats
 import ncel.utils.logging_pb2 as pb
 from ncel.utils.trainer import ModelTrainer
 
-from ncel.models.base import get_flags, get_batch
+from ncel.models.base import get_flags
 from ncel.models.base import init_model, log_path, flag_defaults
 from ncel.models.base import load_data_and_embeddings
 
@@ -162,7 +162,7 @@ def train_loop(
                                     split_by_sent=FLAGS.split_by_sent)
         base, context1, context2, cids, cids_entity, num_candidates, y = batch
         # check training data
-        inspectBatch(batch, vocabulary, doc_batch)
+        # inspectBatch(batch, vocabulary, doc_batch)
 
         total_candidates = num_candidates.sum()
 

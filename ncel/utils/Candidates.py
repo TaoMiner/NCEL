@@ -305,6 +305,8 @@ class CandidatesHandler:
             if vocab is None or (vocab is not None and cand[0] in vocab):
                 c = Candidate(mention, cand[0])
                 c.setEntityMentionPrior(cand[1])
+                if self._id2label is not None:
+                    c.setLabel(self._id2label[cand[0]] if cand[0] in self._id2label else '')
                 candidates.append(c)
         # crop by topn
         if topn > 0 and len(candidates) > topn:
@@ -337,6 +339,9 @@ class Candidate():
         # base
         self._pem = DEFAULT_PRIOR
         self._base = None
+
+    def setLabel(self, label):
+        self.label = label
 
     def setBaseFeature(self, f):
         self._base = f
