@@ -6,8 +6,9 @@ from ncel.utils.layers import cosSim
 
 class FeatureGenerator:
     def __init__(self, initial_embeddings, embedding_dim,
-                 str_sim=True, prior=True, hasAtt=True,
+                 lowercase=True, str_sim=True, prior=True, hasAtt=True,
                  local_context_window=5, global_context_window=5, use_embeddings=True):
+        self._lowercase = lowercase
         self._has_str_sim = str_sim
         self._has_prior = prior
         self._local_window = local_context_window
@@ -130,15 +131,24 @@ class FeatureGenerator:
         # string similarity features
         if self._has_str_sim:
             c_label = candidate.label
-            # mention_text_starts_or_ends_with_entity
-            x = 1 if not isinstance(c_label, type(None)) and len(c_label) > 0 and (
-                c_label.lower().startswith(m_label.lower()) or c_label.lower().endswith(
-                    m_label.lower())) else 0
-            features.append(x)
+            if self._lowercase : c_label = c_label.lower()
             # edit_distance
-            features.append(
-                normalized_damerau_levenshtein_distance(c_label.lower(), m_label.lower())
-                if not isinstance(c_label, type(None)) and len(c_label) > 0 else 0)
+            features.append(normalized_damerau_levenshtein_distance(c_label, m_label))
+            # is equal
+            features.append(1 if c_label==m_label else 0)
+            # mlabel contains clabel
+            features.append(1 if c_label in m_label else 0)
+            # clabel contains mlabel
+            features.append(1 if m_label in c_label else 0)
+            # mlabel starts with clabel
+            features.append(1 if m_label.startswith(c_label) else 0)
+            # clabel starts with mlabel
+            features.append(1 if c_label.startswith(m_label) else 0)
+            # mlabel ends with clabel
+            features.append(1 if m_label.endswith(c_label) else 0)
+            # clabel ends with mlabel
+            features.append(1 if c_label.endswith(m_label) else 0)
+
         # prior
         if self._has_prior:
             # entity prior

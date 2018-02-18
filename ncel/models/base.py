@@ -62,11 +62,11 @@ def get_data_manager(data_type):
 
     return data_manager
 
-def get_feature_manager(embeddings, embedding_dim,
+def get_feature_manager(embeddings, embedding_dim, lowercase=True,
                  str_sim=True, prior=True, hasAtt=True,
                  local_context_window=5, global_context_window=5):
 
-    return FeatureGenerator(embeddings, embedding_dim,
+    return FeatureGenerator(embeddings, embedding_dim, lowercase=lowercase,
                      str_sim=str_sim, prior=prior, hasAtt=hasAtt,
                  local_context_window=local_context_window,
                 global_context_window=global_context_window)
@@ -209,6 +209,7 @@ def load_data_and_embeddings(
     stop_words = loadStopWords(FLAGS.stop_word_file) if FLAGS.stop_word_file is not None else {}
 
     feature_manager = get_feature_manager(initial_embeddings, FLAGS.embedding_dim,
+                                          lowercase=FLAGS.lowercase,
                  str_sim=FLAGS.str_sim, prior=FLAGS.prior, hasAtt=FLAGS.att,
                  local_context_window=FLAGS.local_context_window,
                   global_context_window=FLAGS.global_context_window)

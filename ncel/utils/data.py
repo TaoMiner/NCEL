@@ -101,12 +101,14 @@ def statsCandidates(A, logger=None):
 
 # contexts1 : batch * cand_num * tokens
 # contexts2 : batch * cand_num * tokens
+# ment_strs : batch * cand_num * tokens
 # base_feature : batch * cand_num * features
 # candidates : batch * cand_num
 # candidates_entity: batch * cand_num
-# length: batch
+# length: batch (actual cands)
 # truth: batch
-def get_batch(batch, local_window, use_lr_context=True, split_by_sent=True):
+# m_length: batch * cand_num (actual mentions)
+def get_batch(batch, local_window, m_str_length=3, use_lr_context=True, split_by_sent=True):
     docs = batch
     num_candidates = np.array([len(m.candidates) for doc in docs for m in doc.mentions])
     max_cand_num = max(num_candidates)
@@ -118,18 +120,23 @@ def get_batch(batch, local_window, use_lr_context=True, split_by_sent=True):
 
     C1 = []
     C2 = []
+    MS = []
     B = []
     CID = []
     CID_entity = []
     Y = []
+    Num_mentions = []
 
     for doc in docs:
-        for m in doc.mentions:
+        tmp_ment_len = len(doc.mentions)
+        for i, m in enumerate(doc.mentions):
             con1 = []
             con2 = []
+            ms = []
             base = []
             cids = []
             cids_entity = []
+            num_m = []
             # pad tokens
             tmp_con1 = m.left_context(max_len=local_window, split_by_sent=split_by_sent)
             diff = local_window - len(tmp_con1)
@@ -141,34 +148,49 @@ def get_batch(batch, local_window, use_lr_context=True, split_by_sent=True):
             if diff > 0:
                 tmp_con2 += [token_pad] * diff
 
+            tmp_m_str = m.mention_text_tokenized()
+            diff = m_str_length - len(tmp_m_str)
+            if diff > 0:
+                tmp_m_str += [token_pad] * diff
+            elif diff < 0:
+                tmp_m_str = tmp_m_str[:m_str_length]
+
             gold_idx = -1
-            for i, c in enumerate(m.candidates):
+            for j, c in enumerate(m.candidates):
                 base.append(c.getBaseFeature())
                 if base_feature_dim <= 0: base_feature_dim = len(c.getBaseFeature())
                 con1.append(tmp_con1)
                 con2.append(tmp_con2)
+                ms.append(tmp_m_str)
                 cids.append(c._sense_id)
                 cids_entity.append(c.id)
                 if c.getIsGlod():
-                    gold_idx = i
+                    gold_idx = j
+                num_m.append(0 if (i+1)==tmp_ment_len else 1)
+
             assert gold_idx >= 0, "Error: no gold candidate!"
             # padding current mention candidate to max_cand_num
             paddings = max_cand_num - len(m.candidates)
             if paddings > 0:
                 base_vec = [feature_pad] * base_feature_dim
                 token_vec = [token_pad] * local_window
-                for i in range(paddings):
+                str_vec = [token_pad] * m_str_length
+                for k in range(paddings):
                     base.append(base_vec)
                     con1.append(token_vec)
                     con2.append(token_vec)
+                    ms.append(str_vec)
                     cids.append(entity_pad)
                     cids_entity.append(entity_pad)
+                    num_m.append(0 if (i + 1) == tmp_ment_len else 1)
             B.append(base)
             C1.append(con1)
             C2.append(con2)
+            MS.append(ms)
             CID.append(cids)
             CID_entity.append(cids_entity)
             Y.append(gold_idx)
+            Num_mentions.append(num_m)
 
     C1 = np.array(C1)
     C2 = np.array(C2)
@@ -176,7 +198,7 @@ def get_batch(batch, local_window, use_lr_context=True, split_by_sent=True):
         C1 = np.concatenate((C1, C2), axis=2)
         C2 = None
 
-    return np.array(B), C1, C2, np.array(CID), np.array(CID_entity), num_candidates, np.array(Y)
+    return np.array(B), C1, C2, np.array(MS), np.array(CID), np.array(CID_entity), num_candidates, np.array(Num_mentions), np.array(Y)
 
 def AddCandidatesToDocs(dataset, candidate_handler, vocab=None, topn=0,
                         include_unresolved=False, logger=None):

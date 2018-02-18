@@ -159,7 +159,7 @@ def inspectDoc(doc, word_vocab=None):
 # length: batch
 # truth: batch
 def inspectBatch(batch, vocab, docs, only_one=True):
-    base, context1, context2, cids, cids_entity, num_candidates, y = batch
+    base, context1, context2, m_strs, cids, cids_entity, num_candidates, num_mentions, y = batch
     word_vocab, entity_vocab, sense_vocab, id2wiki_vocab = vocab
     # reverse vocab
     word_label_vocab = dict(

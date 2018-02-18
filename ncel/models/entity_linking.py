@@ -52,12 +52,12 @@ def evaluate(FLAGS, model, eval_set, log_entry,
     model.eval()
 
     for i, dataset_batch in enumerate(dataset):
-        base, context1, context2, cids, cids_entity, num_candidates, y = get_batch(dataset_batch,
+        base, context1, context2, m_strs, cids, cids_entity, num_candidates, num_mentions, y = get_batch(dataset_batch,
                                 FLAGS.local_context_window, use_lr_context=FLAGS.use_lr_context,
                                 split_by_sent=FLAGS.split_by_sent)
         # batch_candidates = eval_num_candidates_batch.sum()
         # Run model. output: batch_size * node_num
-        output = model(context1, base, cids,
+        output = model(context1, base, cids, m_strs,
                        contexts2=context2, candidates_entity=cids_entity, length=num_candidates)
 
         if show_sample:
@@ -160,7 +160,7 @@ def train_loop(
         doc_batch = next(training_data_iter)
         batch = get_batch(doc_batch, FLAGS.local_context_window, use_lr_context=FLAGS.use_lr_context,
                                     split_by_sent=FLAGS.split_by_sent)
-        base, context1, context2, cids, cids_entity, num_candidates, y = batch
+        base, context1, context2, m_strs, cids, cids_entity, num_candidates, num_mentions, y = batch
         # check training data
         # inspectBatch(batch, vocabulary, doc_batch)
 
@@ -170,7 +170,7 @@ def train_loop(
         trainer.optimizer_zero_grad()
 
         # Run model. output: batch_size * max_cand_num
-        output = model(context1, base, cids,
+        output = model(context1, base, cids, m_strs,
                        contexts2=context2, candidates_entity=cids_entity, length=num_candidates)
 
         target = torch.from_numpy(y).long()
