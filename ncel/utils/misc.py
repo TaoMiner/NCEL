@@ -20,14 +20,13 @@ class EvalReporter(object):
         self.report = []
 
     def save_batch(self, samples):
-        self.report.append(samples)
+        self.report.extend(samples)
 
     def write_report(self, filename):
         '''Commits the report to a file.'''
         with open(filename, 'w') as f:
-            for example in self.report:
-                json.dump(example, f, sort_keys=True)
-                f.write('\n')
+            for line in self.report:
+                f.write('{}\n'.format(line))
 
 class Accumulator(object):
     """Accumulator. Makes it easy to keep a trailing list of statistics."""

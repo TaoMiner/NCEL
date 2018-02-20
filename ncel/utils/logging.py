@@ -120,34 +120,33 @@ def print_samples(output, vocabulary, docs, only_one=False):
 
     ent_label_vocab = dict(
             [(entity_vocab[id], id2wiki_vocab[id]) for id in entity_vocab if id in id2wiki_vocab])
-    ent_label_vocab[0] = 'NIL'
+    ent_label_vocab[0] = 'PAD'
+    ent_label_vocab[1] = 'UNK'
+    ent_id_vocab = dict([(entity_vocab[key], key) for key in entity_vocab])
     word_label_vocab = dict(
         [(word_vocab[key], key) for key in word_vocab if key in word_vocab])
 
     sample_sequences = []
-    batch_size, max_candidates = output.shape
-    for b in (list(range(batch_size)) if not only_one else [0]):
-        doc_token_sequence = []
-        doc = docs[b]
-        out_doc = output[b, :]
-        c_idx = 0
-        start = 0
-        for mention in doc.mentions:
-            end = mention._mention_start
-            doc_token_sequence.extend([word_label_vocab[token]
-                                       for token in doc.tokens[start:end]])
-            pred_cid = 0
-            largest_prob = 0
-            for candidate in mention.candidates:
-                cid = candidate.id
-                prob_cid = out_doc[c_idx]
-                if prob_cid > largest_prob :
-                    largest_prob = prob_cid
-                    pred_cid = cid
-                c_idx += 1
-            doc_token_sequence.append("[[{}({})|{}|{}]]".format(ent_label_vocab[pred_cid], largest_prob,
-                       mention.gold_ent_str() if not mention._is_NIL else 'NIL', mention._mention_str))
-            start = mention._mention_end
-        doc_token_sequence.extend([word_label_vocab[token] for token in doc.tokens[start:]])
-        sample_sequences.append(' '.join(doc_token_sequence))
+    m_idx = -1
+    for doc in docs:
+        doc_sequence = [[word_label_vocab[token] for token in sent] for sent in doc.sentences]
+        for i, m in enumerate(doc.mentions):
+            m_idx += 1
+            cand_size = len(m.candidates)
+            doc_sequence[m._sent_idx][m._pos_in_sent] = "[[ " + doc_sequence[m._sent_idx][m._pos_in_sent]
+            doc_sequence[m._sent_idx][m._pos_in_sent+m._mention_length-1] += " ]]"
+
+            out_mention = output[m_idx, :]
+            pred_cid = max(out_mention)
+            doc_sequence.append(["mention:", str(i), "correct:", "true" if m.gold_ent_id()==pred_cid else "False",
+                                     ",cand:", str(cand_size),
+                                     ", gold:", ent_id_vocab[m.gold_ent_id()], m.gold_ent_str()])
+
+            for j, p in enumerate(out_mention):
+                if j < cand_size:
+                    doc_sequence.append(["candidate", str(j), ":", ent_id_vocab[m.candidates[j].id], ent_label_vocab[m.candidates[j].id], str(p)])
+                else:
+                    doc_sequence.append(["pad", str(j), ":", str(p)])
+        for line in doc_sequence:
+            sample_sequences.append(' '.join(line))
     return sample_sequences

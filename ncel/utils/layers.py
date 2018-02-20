@@ -309,7 +309,7 @@ class Embed(nn.Module):
     def __init__(self, size, vocab_size, vectors, fine_tune=False):
         super(Embed, self).__init__()
         if fine_tune:
-            self.embed = nn.Embedding(vocab_size, size, sparse=True)
+            self.embed = nn.Embedding(vocab_size, size, sparse=False)
             self.embed.weight.data.copy_(torch.from_numpy(vectors))
         else:
             self.vectors = vectors

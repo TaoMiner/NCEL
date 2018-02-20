@@ -395,6 +395,7 @@ def TrimDataset(dataset, max_tokens, allow_cropping=True, logger=None):
                     dataset[i].sentences = new_sents
                     # trim mentions
                     for j, mention in enumerate(doc.mentions):
+                        if not mention._is_trainable: continue
                         if mention._mention_end > max_tokens:
                             dataset[i].mentions[j]._is_trainable = False
     return dataset
@@ -406,6 +407,8 @@ def TokensToIDs(word_vocabulary, dataset, stop_words=None, logger=None):
     unks = 0
     lowers = 0
     raises = 0
+
+    unk_m = 0
 
     if UNK_TOKEN in CORE_VOCABULARY:
         unk_id = CORE_VOCABULARY[UNK_TOKEN]
@@ -430,9 +433,6 @@ def TokensToIDs(word_vocabulary, dataset, stop_words=None, logger=None):
                     dataset[i].sentences[j][k] = unk_id
                     unks += 1
                 tokens += 1
-    if logger:
-        logger.Log("Unk rate {:2.6f}%, downcase rate {:2.6f}%, upcase rate {:2.6f}%".format(
-            (unks * 100.0 / tokens), (lowers * 100.0 / tokens), (raises * 100.0 / tokens)))
     # filter unk tokens if not assign id in vocab
     if unk_id == -1:
         for i, doc in enumerate(dataset):
@@ -454,12 +454,17 @@ def TokensToIDs(word_vocabulary, dataset, stop_words=None, logger=None):
                 for t in sent[mention._pos_in_sent:mention._pos_in_sent + mention._mention_length]:
                     if t == unk_id: mt_unks += 1
                 if mt_unks > 0: dataset[i].mentions[j]._mention_length -= mt_unks
-                # update mention sent index by new sents
-                empty_token_in_sent = 0
-                for t in sent[:mention._pos_in_sent]:
-                    if t == unk_id: empty_token_in_sent += 1
-                dataset[i].mentions[j]._sent_idx -= empty_cumsum[mention._sent_idx]
-                dataset[i].mentions[j]._pos_in_sent -= empty_token_in_sent
+
+                if dataset[i].mentions[j]._mention_length == 0:
+                    unk_m += 1
+                    dataset[i].mentions[j]._is_trainable = False
+                else:
+                    # update mention sent index by new sents
+                    empty_token_in_sent = 0
+                    for t in sent[:mention._pos_in_sent]:
+                        if t == unk_id: empty_token_in_sent += 1
+                    dataset[i].mentions[j]._sent_idx -= empty_cumsum[mention._sent_idx]
+                    dataset[i].mentions[j]._pos_in_sent -= empty_token_in_sent
             # update doc sentences by removing both unk token and empty sents
             dataset[i].sentences = [sent for sent in new_sents if len(sent) > 0]
             # update mention offset of tokens
@@ -467,6 +472,9 @@ def TokensToIDs(word_vocabulary, dataset, stop_words=None, logger=None):
                 dataset[i].mentions[j].updateTokenIdxBySentIdx()
             # update doc tokens
             doc.tokens = [t for s in dataset[i].sentences for t in s]
+    if logger:
+        logger.Log("Unk mention:{}, Unk rate {:2.6f}%, downcase rate {:2.6f}%, upcase rate {:2.6f}%".format(
+            unk_m, (unks * 100.0 / tokens), (lowers * 100.0 / tokens), (raises * 100.0 / tokens)))
     return dataset
 
 def EntityToIDs(entity_vocabulary, dataset, sense_vocab=None,

@@ -121,7 +121,7 @@ class CandidatesHandler:
         with open(filename, 'w', encoding='UTF-8') as fout:
             for m in self._mention_dict:
                 for c in self._mention_dict[m]:
-                    fout.write("{}\t{}\t{}\n".format(m, self._mention_dict[m][c], c))
+                    fout.write("{}\t{}\t{}\n".format(m, c[1], c[0]))
 
     def candidateSoftmax(self, cand_list):
         total_prior = sum([cand[1] for cand in cand_list])

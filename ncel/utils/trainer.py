@@ -181,18 +181,50 @@ class ModelTrainer(object):
             checkpoint = torch.load(filename)
         model_state_dict = checkpoint['model_state_dict']
 
-        if 'embed.embed.weight' in model_state_dict:
-            loaded_embeddings = model_state_dict['embed.embed.weight']
-            del(model_state_dict['embed.embed.weight'])
+        # restore words
+        if 'word_embed.embed.weight' in model_state_dict:
+            loaded_embeddings = model_state_dict['word_embed.embed.weight']
+            del(model_state_dict['word_embed.embed.weight'])
 
             count = 0
-            for ent_id in checkpoint['entity_vocab']:
-                if ent_id in self.entity_vocab:
-                    self_index = self.entity_vocab[ent_id]
-                    loaded_index = checkpoint['entity_vocab'][ent_id]
-                    self.model.embed.embed.weight.data[self_index, :] = loaded_embeddings[loaded_index, :]
+            for word in checkpoint['word_vocab']:
+                if word in self.word_vocab:
+                    self_index = self.word_vocab[word]
+                    loaded_index = checkpoint['word_vocab'][word]
+                    self.model.word_embed.embed.weight.data[self_index, :] = loaded_embeddings[loaded_index, :]
                     count += 1
-            self.logger.Log('Restored ' + str(count) + ' entity from checkpoint.')
+            self.logger.Log('Restored ' + str(count) + ' words from checkpoint.')
+
+        # restore entities
+        if 'entity_embed.embed.weight' in model_state_dict:
+            loaded_embeddings = model_state_dict['entity_embed.embed.weight']
+            del (model_state_dict['entity_embed.embed.weight'])
+
+            count = 0
+            for entity in checkpoint['entity_vocab']:
+                if entity in self.entity_vocab:
+                    self_index = self.entity_vocab[entity]
+                    loaded_index = checkpoint['entity_vocab'][entity]
+                    self.model.entity_embed.embed.weight.data[self_index, :] = loaded_embeddings[loaded_index, :]
+                    count += 1
+            self.logger.Log('Restored ' + str(count) + ' entities from checkpoint.')
+
+        # restore senses and mu
+        if 'sense_embed.embed.weight' in model_state_dict and 'mu_embed.embed.weight' in model_state_dict:
+            loaded_sense_embeddings = model_state_dict['sense_embed.embed.weight']
+            loaded_mu_embeddings = model_state_dict['mu_embed.embed.weight']
+            del (model_state_dict['sense_embed.embed.weight'])
+            del (model_state_dict['mu_embed.embed.weight'])
+
+            count = 0
+            for sense in checkpoint['sense_vocab']:
+                if sense in self.sense_vocab:
+                    self_index = self.sense_vocab[sense]
+                    loaded_index = checkpoint['sense_vocab'][sense]
+                    self.model.sense_embed.embed.weight.data[self_index, :] = loaded_sense_embeddings[loaded_index, :]
+                    self.model.mu_embed.embed.weight.data[self_index, :] = loaded_mu_embeddings[loaded_index, :]
+                    count += 1
+            self.logger.Log('Restored ' + str(count) + ' senses from checkpoint.')
 
         self.model.load_state_dict(model_state_dict, strict=False)
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])

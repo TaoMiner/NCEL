@@ -58,7 +58,8 @@ def evaluate(FLAGS, model, eval_set, log_entry,
         # batch_candidates = eval_num_candidates_batch.sum()
         # Run model. output: batch_size * node_num
         output = model(context1, base, cids, m_strs,
-                       contexts2=context2, candidates_entity=cids_entity, length=num_candidates)
+                       contexts2=context2, candidates_entity=cids_entity,
+                       num_mentions=num_mentions, length=num_candidates)
 
         if show_sample:
             samples = print_samples(output.data.cpu().numpy(), vocabulary, dataset_batch, only_one=True)
@@ -171,7 +172,8 @@ def train_loop(
 
         # Run model. output: batch_size * max_cand_num
         output = model(context1, base, cids, m_strs,
-                       contexts2=context2, candidates_entity=cids_entity, length=num_candidates)
+                       contexts2=context2, candidates_entity=cids_entity,
+                       num_mentions=num_mentions, length=num_candidates)
 
         target = torch.from_numpy(y).long()
         # Calculate accuracy.
@@ -188,7 +190,10 @@ def train_loop(
         # for n,p in model.named_parameters():
         #     print('===========\nbefore gradient:{}\n----------\n{}'.format(n, p.grad))
         # Hard Gradient Clipping
-        nn.utils.clip_grad_norm([param for name, param in model.named_parameters() if name not in ["embed.embed.weight"]], FLAGS.clipping_max_value)
+        nn.utils.clip_grad_norm([param for name, param in model.named_parameters() if name not in
+                                 ["word_embed.embed.weight", "entity_embed.embed.weight",
+                                  "sense_embed.embed.weight", "mu_embed.embed.weight"]],
+                                FLAGS.clipping_max_value)
 
         # Gradient descent step.
         trainer.optimizer_step()

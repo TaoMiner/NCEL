@@ -76,12 +76,12 @@ class MLPC(nn.Module):
         self.embeds = [self.word_embed, self.sense_embed, self.mu_embed, self.entity_embed]
 
         # base_dim + sense_dim + word_dim + 2 + 1(if has entity) + (2+word_dim)(if has contexts) + 1(if has context2 and has entity)
-        self._feature_dim = base_dim + sense_embedding_dim + word_embedding_dim + 4
+        self._feature_dim = base_dim + 2*self._dim + 4
         if self._use_entity:
             self._feature_dim += 2
 
         if self._use_contexts2:
-            self._feature_dim += 2 + word_embedding_dim
+            self._feature_dim += 2 + self._dim
             if self._use_entity:
                 self._feature_dim += 1
 
@@ -126,15 +126,23 @@ class MLPC(nn.Module):
     # emb : (batch * cand_num) * dim
     # mask: (batch * cand_num) * dim
     def getNeighEmb(self, mstr_emb, cand_num, neighbor_window, left_mask, right_mask):
-        margin_col = Variable(torch.zeros(cand_num, self._dim))
+        margin_col = to_gpu(Variable(torch.zeros(cand_num, self._dim), requires_grad=False))
         # left_neighs: (batch_size*cand_num) * window * dim
-        left_neighs = self.leftMvNeigh(mstr_emb, cand_num, margin_col, left_mask)
+        tmp_left_neigh_list = []
+        tmp_left_neigh_list.append(self.leftMvNeigh(mstr_emb, cand_num, margin_col, left_mask))
         for i in range(neighbor_window-1):
-            left_neighs = torch.cat((left_neighs, self.leftMvNeigh(left_neighs, cand_num, margin_col, left_mask)))
+            tmp_left_neigh_list.append(self.leftMvNeigh(tmp_left_neigh_list[i], cand_num, margin_col, left_mask))
+        for i, neigh in enumerate(tmp_left_neigh_list):
+            tmp_left_neigh_list[i] = tmp_left_neigh_list[i].unsqueeze(1)
+        left_neighs = torch.cat(tmp_left_neigh_list, dim=1)
 
-        right_neighs = self.rightMvNeigh(mstr_emb, cand_num, margin_col, right_mask)
+        tmp_right_neigh_list = []
+        tmp_right_neigh_list.append(self.rightMvNeigh(mstr_emb, cand_num, margin_col, right_mask))
         for i in range(neighbor_window - 1):
-            right_neighs = torch.cat((right_neighs, self.rightMvNeigh(right_neighs, cand_num, margin_col, right_mask)))
+            tmp_right_neigh_list.append(self.rightMvNeigh(tmp_right_neigh_list[i], cand_num, margin_col, right_mask))
+        for i, neigh in enumerate(tmp_right_neigh_list):
+            tmp_right_neigh_list[i] = tmp_right_neigh_list[i].unsqueeze(1)
+        right_neighs = torch.cat(tmp_right_neigh_list, dim=1)
         # neigh_emb: (batch_size*cand_num) * 2window * dim
         neigh_emb = torch.cat((left_neighs, right_neighs), dim=1)
         # neigh_emb: (batch_size*cand_num) * dim
@@ -166,8 +174,8 @@ class MLPC(nn.Module):
         has_neighbors = False
         if self._neighbor_window > 0 and num_mentions is not None:
             # batch * cand
-            margin_col = Variable(torch.zeros(1, cand_num))
-            right_neigh_mask = to_gpu(Variable(torch.from_numpy(num_mentions), requires_grad=False)).long()
+            margin_col = to_gpu(Variable(torch.zeros(1, cand_num), requires_grad=False))
+            right_neigh_mask = to_gpu(Variable(torch.from_numpy(num_mentions), requires_grad=False)).float()
             left_neigh_mask = torch.cat([margin_col, right_neigh_mask[:-1,:]], dim=0)
             right_neigh_mask_expand = right_neigh_mask.view(-1).unsqueeze(1).expand(batch_size*cand_num, self._dim)
             left_neigh_mask_expand = left_neigh_mask.view(-1).unsqueeze(1).expand(batch_size*cand_num, self._dim)
@@ -250,6 +258,7 @@ class MLPC(nn.Module):
         h = torch.cat((base_feature, cand_entity_emb, f1_entity_emb, sim1, sim2, m_sim1, m_sim2), dim=1)
         if has_entity:
             h = torch.cat((h, sim3, m_sim3), dim=1)
+
         if has_context2:
             h = torch.cat((h, sim4, sim5, f2_entity_emb), dim=1)
             if has_entity:

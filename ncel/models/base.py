@@ -298,7 +298,7 @@ def get_flags():
                            "base for the filename.")
     gflags.DEFINE_integer(
         "ckpt_step",
-        1000,
+        5000,
         "Steps to run before considering saving checkpoint.")
     gflags.DEFINE_boolean(
         "ckpt_on_best_dev_error",
@@ -309,7 +309,7 @@ def get_flags():
         "load_best",
         False,
         "If True, attempt to load 'best' checkpoint.")
-    gflags.DEFINE_integer("ckpt_interval_steps", 5000,
+    gflags.DEFINE_integer("ckpt_interval_steps", 2000,
                           "Update the checkpoint on disk at this interval.")
 
     # Data settings.
@@ -360,7 +360,6 @@ def get_flags():
                         "Used in optimizer. Decay the LR by this much every epoch steps if a new best has not been set in the last epoch.")
     gflags.DEFINE_float("clipping_max_value", 5.0, "")
     gflags.DEFINE_float("l2_lambda", 1e-5, "")
-    gflags.DEFINE_float("xling", 0.1, "balance candidate loss and mention loss.")
     gflags.DEFINE_float("dropout", 0.1, "Used for dropout.")
     gflags.DEFINE_integer("batch_size", 32, "Minibatch size.")
     gflags.DEFINE_boolean( "smart_batching", True, "Organize batches using sequence length.")
@@ -444,7 +443,7 @@ def get_flags():
         "Sample transitions at this interval.")
     gflags.DEFINE_integer(
         "early_stopping_steps_to_wait",
-        1000,
+        5000,
         "If development set error doesn't improve significantly in this many steps, cease training.")
     gflags.DEFINE_boolean("write_eval_report", False, "")
 
