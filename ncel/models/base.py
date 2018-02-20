@@ -293,7 +293,9 @@ def get_flags():
         False,
         "Write logs in a protocol buffer format.")
     gflags.DEFINE_string(
-        "ckpt_file", None, "Where to save/load checkpoints.")
+        "ckpt_path", None, "Where to save/load checkpoints. Can be either "
+                           "a filename or a directory. In the latter case, the experiment name serves as the "
+                           "base for the filename.")
     gflags.DEFINE_integer(
         "ckpt_step",
         2000,
@@ -305,6 +307,10 @@ def get_flags():
         "at most 0.99 of error at the previous checkpoint, save a special 'best' checkpoint.")
     gflags.DEFINE_integer("ckpt_interval_steps", 2000,
                           "Update the checkpoint on disk at this interval.")
+    gflags.DEFINE_boolean(
+        "load_best",
+        False,
+        "If True, attempt to load 'best' checkpoint.")
 
     # Data settings.
     gflags.DEFINE_string("training_data", None,

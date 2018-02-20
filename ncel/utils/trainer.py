@@ -5,6 +5,16 @@ from ncel.utils.layers import the_gpu
 import os
 from ncel.utils.misc import recursively_set_device
 
+def get_checkpoint_path(FLAGS, suffix=".ckpt", best=False):
+    # Set checkpoint path.
+    if FLAGS.ckpt_path.endswith(".ckpt") or FLAGS.ckpt_path.endswith(".ckpt_best"):
+        checkpoint_path = FLAGS.ckpt_path
+    else:
+        checkpoint_path = os.path.join(FLAGS.ckpt_path, FLAGS.experiment_name + suffix)
+    if best and not FLAGS.ckpt_path.endswith(".ckpt_best"):
+        checkpoint_path += "_best"
+    return checkpoint_path
+
 class ModelTrainer(object):
     def __init__(self, model, logger, epoch_length, vocabulary, FLAGS):
         self.model = model
@@ -44,12 +54,19 @@ class ModelTrainer(object):
 
         self.optimizer_reset(FLAGS.learning_rate)
 
-        self.checkpoint_path = FLAGS.ckpt_file
+        self.standard_checkpoint_path = get_checkpoint_path(FLAGS)
+        self.best_checkpoint_path = get_checkpoint_path(FLAGS, best=True)
 
         # Load checkpoint if available.
-        if os.path.isfile(self.checkpoint_path):
+        if FLAGS.load_best and os.path.isfile(self.best_checkpoint_path):
             self.logger.Log("Found best checkpoint, restoring.")
-            self.load(self.checkpoint_path, cpu=FLAGS.gpu < 0)
+            self.load(self.best_checkpoint_path, cpu=FLAGS.gpu < 0)
+            self.logger.Log(
+                "Resuming at step: {} with best dev accuracy: {}".format(
+                    self.step, 1. - self.best_dev_error))
+        elif os.path.isfile(self.standard_checkpoint_path):
+            self.logger.Log("Found checkpoint, restoring.")
+            self.load(self.standard_checkpoint_path, cpu=FLAGS.gpu < 0)
             self.logger.Log(
                 "Resuming at step: {} with best dev accuracy: {}".format(
                     self.step, 1. - self.best_dev_error))
