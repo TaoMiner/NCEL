@@ -293,22 +293,16 @@ def get_flags():
         False,
         "Write logs in a protocol buffer format.")
     gflags.DEFINE_string(
-        "ckpt_path", None, "Where to save/load checkpoints. Can be either "
-                           "a filename or a directory. In the latter case, the experiment name serves as the "
-                           "base for the filename.")
+        "ckpt_file", None, "Where to save/load checkpoints.")
     gflags.DEFINE_integer(
         "ckpt_step",
-        5000,
+        2000,
         "Steps to run before considering saving checkpoint.")
     gflags.DEFINE_boolean(
         "ckpt_on_best_dev_error",
         True,
         "If error on the first eval set (the dev set) is "
         "at most 0.99 of error at the previous checkpoint, save a special 'best' checkpoint.")
-    gflags.DEFINE_boolean(
-        "load_best",
-        False,
-        "If True, attempt to load 'best' checkpoint.")
     gflags.DEFINE_integer("ckpt_interval_steps", 2000,
                           "Update the checkpoint on disk at this interval.")
 
@@ -375,10 +369,6 @@ def get_flags():
         False,
         "If set, a checkpoint is loaded and a forward pass is done to get the predicted candidates."
         "Requirements: Must specify checkpoint path.")
-    gflags.DEFINE_boolean(
-        "eval_only_mode_use_best_checkpoint",
-        True,
-        "When in eval_only_mode, load the ckpt_best checkpoint.")
 
     # Model architecture settings.
     gflags.DEFINE_enum(

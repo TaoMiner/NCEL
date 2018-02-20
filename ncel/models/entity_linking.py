@@ -268,10 +268,9 @@ def run(only_forward=False):
 
     # Do an evaluation-only run.
     logger.LogHeader(header)  # Start log_entry logging.
-
     if only_forward:
         log_entry = pb.NcelEntry()
-        for index, eval_set in enumerate(eval_iterators[0]):
+        for index, eval_set in enumerate(eval_iterators):
             log_entry.Clear()
             evaluate(
                 FLAGS,
@@ -279,8 +278,8 @@ def run(only_forward=False):
                 eval_set,
                 log_entry,
                 logger,
-                trainer,
                 show_sample=True,
+                vocabulary=vocabulary,
                 eval_index=index,
                 report_sample=True)
             print(log_entry)

@@ -5,21 +5,6 @@ from ncel.utils.layers import the_gpu
 import os
 from ncel.utils.misc import recursively_set_device
 
-def get_checkpoint_path(FLAGS, suffix=".ckpt", best=False):
-    # Set checkpoint path.
-
-    if FLAGS.eval_only_mode and FLAGS.eval_only_mode_use_best_checkpoint:
-        best = True
-
-    if FLAGS.ckpt_path.endswith(".ckpt") or FLAGS.ckpt_path.endswith(".ckpt_best"):
-        checkpoint_path = FLAGS.ckpt_path
-    else:
-        checkpoint_path = os.path.join(FLAGS.ckpt_path, FLAGS.experiment_name + suffix)
-    if best:
-        checkpoint_path += "_best"
-    return checkpoint_path
-
-
 class ModelTrainer(object):
     def __init__(self, model, logger, epoch_length, vocabulary, FLAGS):
         self.model = model
@@ -38,7 +23,6 @@ class ModelTrainer(object):
         self.learning_rate_decay_when_no_progress = FLAGS.learning_rate_decay_when_no_progress
         self.training_data_length = None
         self.eval_interval_steps = FLAGS.eval_interval_steps
-        self.xling = FLAGS.xling
 
         self.step = 0
         self.best_dev_error = 1.0
@@ -60,19 +44,12 @@ class ModelTrainer(object):
 
         self.optimizer_reset(FLAGS.learning_rate)
 
-        self.standard_checkpoint_path = get_checkpoint_path(FLAGS)
-        self.best_checkpoint_path = get_checkpoint_path(FLAGS, best=True)
+        self.checkpoint_path = FLAGS.ckpt_file
 
         # Load checkpoint if available.
-        if FLAGS.load_best and os.path.isfile(self.best_checkpoint_path):
+        if os.path.isfile(self.checkpoint_path):
             self.logger.Log("Found best checkpoint, restoring.")
-            self.load(self.best_checkpoint_path, cpu=FLAGS.gpu < 0)
-            self.logger.Log(
-                "Resuming at step: {} with best dev accuracy: {}".format(
-                    self.step, 1. - self.best_dev_error))
-        elif os.path.isfile(self.standard_checkpoint_path):
-            self.logger.Log("Found checkpoint, restoring.")
-            self.load(self.standard_checkpoint_path, cpu=FLAGS.gpu < 0)
+            self.load(self.checkpoint_path, cpu=FLAGS.gpu < 0)
             self.logger.Log(
                 "Resuming at step: {} with best dev accuracy: {}".format(
                     self.step, 1. - self.best_dev_error))
@@ -162,6 +139,7 @@ class ModelTrainer(object):
             'optimizer_state_dict': self.optimizer.state_dict(),
             'word_vocab': self.word_vocab,
             'entity_vocab': self.entity_vocab,
+            'sense_vocab': self.sense_vocab,
             'id2wiki_vocab': self.id2wiki_vocab
             }
         if self.sparse_optimizer is not None:

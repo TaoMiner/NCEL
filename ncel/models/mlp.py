@@ -12,11 +12,11 @@ from ncel.utils.layers import Embed, to_gpu, MLPClassifier
 
 def build_model(base_feature_dim, initial_embeddings, FLAGS):
     model_cls = MLPC
-    layers_dim = [1000]
+    layers_dim = [2000]
     use_contexts2 = FLAGS.use_lr_context
     use_entity = True
     use_att = FLAGS.att
-    neighbor_window = 2
+    neighbor_window = 3
     return model_cls(
         base_feature_dim,
         initial_embeddings,
@@ -43,7 +43,7 @@ class MLPC(nn.Module):
                  use_contexts2=True,
                  use_entity=False,
                  use_att=True,
-                 neighbor_window=2
+                 neighbor_window=3
                  ):
         super(MLPC, self).__init__()
 
