@@ -15,13 +15,17 @@ PADDING_TOKEN = "_PAD"
 # UNK must be existed in pre-trained embeddings
 UNK_TOKEN = "_"
 
-CORE_VOCABULARY = {PADDING_TOKEN: 0}
+CORE_VOCABULARY = {PADDING_TOKEN: 0, UNK_TOKEN:1}
 
 PADDING_ID = CORE_VOCABULARY[PADDING_TOKEN]
 
 PADDING_ENTITY = "_EPAD"
 UNK_ENTITY = "_E_"
 CORE_ENTITY_VOCABULARY = {PADDING_ENTITY: 0, UNK_ENTITY: 1}
+
+PADDING_SENSE = "_SPAD"
+UNK_SENSE = "_S_"
+CORE_SENSE_VOCABULARY = {PADDING_SENSE: 0, UNK_SENSE: 1}
 
 class SimpleProgressBar(object):
     """ Simple Progress Bar and Timing Snippet
@@ -104,7 +108,7 @@ def statsCandidates(A, logger=None):
 # ment_strs : batch * cand_num * tokens
 # base_feature : batch * cand_num * features
 # candidates : batch * cand_num
-# candidates_entity: batch * cand_num
+# candidates_sense: batch * cand_num
 # length: batch (actual cands)
 # truth: batch
 # m_length: batch * cand_num (actual mentions)
@@ -115,6 +119,7 @@ def get_batch(batch, local_window, m_str_length=3, use_lr_context=True, split_by
 
     token_pad = CORE_VOCABULARY[PADDING_TOKEN]
     entity_pad = CORE_ENTITY_VOCABULARY[PADDING_ENTITY]
+    sense_pad = CORE_SENSE_VOCABULARY[PADDING_SENSE]
     feature_pad = 0.0
     base_feature_dim = -1
 
@@ -123,7 +128,7 @@ def get_batch(batch, local_window, m_str_length=3, use_lr_context=True, split_by
     MS = []
     B = []
     CID = []
-    CID_entity = []
+    CID_sense = []
     Y = []
     Num_mentions = []
 
@@ -135,7 +140,7 @@ def get_batch(batch, local_window, m_str_length=3, use_lr_context=True, split_by
             ms = []
             base = []
             cids = []
-            cids_entity = []
+            cids_sense = []
             num_m = []
             # pad tokens
             tmp_con1 = m.left_context(max_len=local_window, split_by_sent=split_by_sent)
@@ -162,8 +167,8 @@ def get_batch(batch, local_window, m_str_length=3, use_lr_context=True, split_by
                 con1.append(tmp_con1)
                 con2.append(tmp_con2)
                 ms.append(tmp_m_str)
-                cids.append(c._sense_id)
-                cids_entity.append(c.id)
+                cids.append(c.id)
+                cids_sense.append(c._sense_id)
                 if c.getIsGlod():
                     gold_idx = j
                 num_m.append(0 if (i+1)==tmp_ment_len else 1)
@@ -181,14 +186,14 @@ def get_batch(batch, local_window, m_str_length=3, use_lr_context=True, split_by
                     con2.append(token_vec)
                     ms.append(str_vec)
                     cids.append(entity_pad)
-                    cids_entity.append(entity_pad)
+                    cids_sense.append(sense_pad)
                     num_m.append(0 if (i + 1) == tmp_ment_len else 1)
             B.append(base)
             C1.append(con1)
             C2.append(con2)
             MS.append(ms)
             CID.append(cids)
-            CID_entity.append(cids_entity)
+            CID_sense.append(cids_sense)
             Y.append(gold_idx)
             Num_mentions.append(num_m)
 
@@ -198,7 +203,7 @@ def get_batch(batch, local_window, m_str_length=3, use_lr_context=True, split_by
         C1 = np.concatenate((C1, C2), axis=2)
         C2 = None
 
-    return np.array(B), C1, C2, np.array(MS), np.array(CID), np.array(CID_entity), num_candidates, np.array(Num_mentions), np.array(Y)
+    return np.array(B), C1, C2, np.array(MS), np.array(CID), np.array(CID_sense), num_candidates, np.array(Num_mentions), np.array(Y)
 
 def AddCandidatesToDocs(dataset, candidate_handler, vocab=None, topn=0,
                         include_unresolved=False, logger=None):
@@ -250,7 +255,7 @@ def BuildEntityVocabulary(candidate_entities, entity_embedding_file, sense_embed
     # Build a vocabulary of entities in the data for which we have an
     # embedding.
     sense_vocabulary = BuildVocabularyForBinaryEmbeddingFile(sense_embedding_file,
-                        candidate_entities, CORE_ENTITY_VOCABULARY, isSense=True) if sense_embedding_file is not None else None
+                        candidate_entities, CORE_SENSE_VOCABULARY, isSense=True) if sense_embedding_file is not None else None
 
     return entity_vocabulary, sense_vocabulary
 
@@ -407,6 +412,7 @@ def TokensToIDs(word_vocabulary, dataset, stop_words=None, logger=None):
     unks = 0
     lowers = 0
     raises = 0
+    sp_num = 0
 
     unk_m = 0
 
@@ -419,8 +425,8 @@ def TokensToIDs(word_vocabulary, dataset, stop_words=None, logger=None):
         for j, sent in enumerate(doc.sentences):
             for k, token in enumerate(sent):
                 if stop_words is not None and token in stop_words:
-                    dataset[i].sentences[j][k] = unk_id
-                    unks += 1
+                    dataset[i].sentences[j][k] = -1
+                    sp_num += 1
                 elif token in word_vocabulary:
                     dataset[i].sentences[j][k] = word_vocabulary[token]
                 elif token.lower() in word_vocabulary:
@@ -434,12 +440,12 @@ def TokensToIDs(word_vocabulary, dataset, stop_words=None, logger=None):
                     unks += 1
                 tokens += 1
     # filter unk tokens if not assign id in vocab
-    if unk_id == -1:
+    if unk_id == -1 or sp_num>0:
         for i, doc in enumerate(dataset):
             # new sents filter out unk at token level, keep empty sents
             empty_sent_count = 0
             empty_cumsum = []
-            new_sents = [[token for token in sent if token != unk_id] for sent in doc.sentences]
+            new_sents = [[token for token in sent if token != -1] for sent in doc.sentences]
             for sent in new_sents:
                 empty_cumsum.append(empty_sent_count)
                 if len(sent) == 0: empty_sent_count += 1
@@ -452,7 +458,7 @@ def TokensToIDs(word_vocabulary, dataset, stop_words=None, logger=None):
                     continue
                 mt_unks = 0
                 for t in sent[mention._pos_in_sent:mention._pos_in_sent + mention._mention_length]:
-                    if t == unk_id: mt_unks += 1
+                    if t == -1: mt_unks += 1
                 if mt_unks > 0: dataset[i].mentions[j]._mention_length -= mt_unks
 
                 if dataset[i].mentions[j]._mention_length == 0:
@@ -462,7 +468,7 @@ def TokensToIDs(word_vocabulary, dataset, stop_words=None, logger=None):
                     # update mention sent index by new sents
                     empty_token_in_sent = 0
                     for t in sent[:mention._pos_in_sent]:
-                        if t == unk_id: empty_token_in_sent += 1
+                        if t == -1: empty_token_in_sent += 1
                     dataset[i].mentions[j]._sent_idx -= empty_cumsum[mention._sent_idx]
                     dataset[i].mentions[j]._pos_in_sent -= empty_token_in_sent
             # update doc sentences by removing both unk token and empty sents
@@ -473,16 +479,23 @@ def TokensToIDs(word_vocabulary, dataset, stop_words=None, logger=None):
             # update doc tokens
             doc.tokens = [t for s in dataset[i].sentences for t in s]
     if logger:
-        logger.Log("Unk mention:{}, Unk rate {:2.6f}%, downcase rate {:2.6f}%, upcase rate {:2.6f}%".format(
-            unk_m, (unks * 100.0 / tokens), (lowers * 100.0 / tokens), (raises * 100.0 / tokens)))
+        logger.Log("Unk mention:{}, Unk rate {:2.6f}%, downcase rate {:2.6f}%, upcase rate {:2.6f}%, stop rate {:2.6f}%".format(
+            unk_m, (unks * 100.0 / tokens), (lowers * 100.0 / tokens), (raises * 100.0 / tokens), (sp_num * 100.0 / tokens)))
     return dataset
 
 def EntityToIDs(entity_vocabulary, dataset, sense_vocab=None,
                 include_unresolved=False, logger=None):
 
     if UNK_ENTITY in CORE_ENTITY_VOCABULARY:
-        unk_id = CORE_ENTITY_VOCABULARY[UNK_ENTITY]
-    else: unk_id = -1
+        unk_ent_id = CORE_ENTITY_VOCABULARY[UNK_ENTITY]
+    else: unk_ent_id = -1
+
+    if sense_vocab is None :
+        unk_sense_id = -2
+        sense_vocab = {}
+    if UNK_SENSE in CORE_SENSE_VOCABULARY:
+        unk_sense_id = CORE_SENSE_VOCABULARY[UNK_SENSE]
+    else: unk_sense_id = -1
     # avg rank
     # A = Accumulator(maxlen=500)
 
@@ -504,16 +517,26 @@ def EntityToIDs(entity_vocabulary, dataset, sense_vocab=None,
             if include_unresolved and mention._is_NIL:
                 # todo: can't deal with NIL due to classification no gold
                 mention._is_trainable = False
-                dataset[i].mentions[j]._gold_ent_id = unk_id
+                dataset[i].mentions[j]._gold_ent_id = unk_ent_id
                 nil_num += 1
             elif not include_unresolved and mention._is_NIL:
                 mention._is_trainable = False
                 m_unk += 1
+            # no gold vec
+            elif mention.gold_ent_id() is None or (unk_ent_id == -1 and mention.gold_ent_id() not in entity_vocabulary):
+                mention._is_trainable = False
+                m_unk += 1
+                g_unk += 1
+            # no sense vec
+            elif unk_sense_id==-1 and mention.gold_ent_id() not in sense_vocab:
+                    mention._is_trainable = False
+                    m_unk += 1
+                    g_unk += 1
             else:
                 # set candidate label
                 is_trainable = False
                 for k, cand in enumerate(mention.candidates):
-                    if mention.gold_ent_id() is not None and cand.id == mention.gold_ent_id():
+                    if cand.id == mention.gold_ent_id():
                         dataset[i].mentions[j].candidates[k].setGold()
                         is_trainable = True
                         break
@@ -521,38 +544,32 @@ def EntityToIDs(entity_vocabulary, dataset, sense_vocab=None,
                     mention._is_trainable = False
                     m_unk += 1
                     no_gold_cand += 1
-                # gold no vec
-                elif mention.gold_ent_id() is None or mention.gold_ent_id() not in entity_vocabulary:
-                    mention._is_trainable = False
-                    m_unk += 1
-                    g_unk += 1
-                else:
-                    if sense_vocab is not None and mention.gold_ent_id() in sense_vocab:
-                        dataset[i].mentions[j]._gold_sense_id = sense_vocab[mention.gold_ent_id()]
-                    else : dataset[i].mentions[j]._gold_sense_id = unk_id
-                    dataset[i].mentions[j]._gold_ent_id = entity_vocabulary[mention.gold_ent_id()]
+                    continue
+
+                dataset[i].mentions[j]._gold_sense_id = sense_vocab[mention.gold_ent_id()] \
+                    if mention.gold_ent_id() in sense_vocab else unk_sense_id
+
+                dataset[i].mentions[j]._gold_ent_id = entity_vocabulary[mention.gold_ent_id()] \
+                    if mention.gold_ent_id() in entity_vocabulary else unk_ent_id
+            # candidate to id
             if mention._is_trainable:
-                # replace candidate id
                 new_candidates = []
                 # avg rank
                 # rank = -1
                 for k, cand in enumerate(mention.candidates):
                     c_num += 1
-                    if cand.id in entity_vocabulary:
-                        if sense_vocab is not None and cand.id in sense_vocab:
-                            dataset[i].mentions[j].candidates[k].setSense(sense_vocab[cand.id])
-                        else : dataset[i].mentions[j].candidates[k].setSense(unk_id)
-                        dataset[i].mentions[j].candidates[k].id = entity_vocabulary[cand.id]
-                        new_candidates.append(dataset[i].mentions[j].candidates[k])
-                        # avg rank
-                        # if cand.getIsGlod(): rank = k
-                    else:
-                        dataset[i].mentions[j].candidates[k].id = unk_id
-                        c_unk += 1
+                    if (unk_ent_id == -1 and cand.id not in entity_vocabulary) or (
+                                    unk_sense_id == -1 and cand.id not in sense_vocab):
                         if cand.getIsGlod():
                             no_gold_cand += 1
                             m_unk += 1
                             mention._is_trainable = False
+                    else:
+                        if sense_vocab is not None and cand.id in sense_vocab:
+                            dataset[i].mentions[j].candidates[k].setSense(sense_vocab[cand.id])
+                        else : dataset[i].mentions[j].candidates[k].setSense(unk_sense_id)
+                        dataset[i].mentions[j].candidates[k].id = entity_vocabulary[cand.id]
+                        new_candidates.append(dataset[i].mentions[j].candidates[k])
                 dataset[i].mentions[j].candidates = new_candidates
                 dataset[i].n_candidates += len(new_candidates)
                 # if rank>=0:

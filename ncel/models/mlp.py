@@ -14,7 +14,6 @@ def build_model(base_feature_dim, initial_embeddings, FLAGS):
     model_cls = MLPC
     layers_dim = [2000]
     use_contexts2 = FLAGS.use_lr_context
-    use_entity = True
     use_att = FLAGS.att
     neighbor_window = 3
     return model_cls(
@@ -25,7 +24,6 @@ def build_model(base_feature_dim, initial_embeddings, FLAGS):
         dropout=FLAGS.dropout,
         fine_tune_loaded_embeddings=FLAGS.fine_tune_loaded_embeddings,
         use_contexts2=use_contexts2,
-        use_entity=use_entity,
         use_att=use_att,
         neighbor_window = neighbor_window
     )
@@ -41,14 +39,12 @@ class MLPC(nn.Module):
                  dropout = 0.0,
                  fine_tune_loaded_embeddings=None,
                  use_contexts2=True,
-                 use_entity=False,
                  use_att=True,
                  neighbor_window=3
                  ):
         super(MLPC, self).__init__()
 
         self._use_contexts2 = use_contexts2
-        self._use_entity = use_entity
         self._use_att = use_att
         self._dropout_rate = dropout
         self._neighbor_window = neighbor_window
@@ -56,44 +52,45 @@ class MLPC(nn.Module):
         word_embeddings, entity_embeddings, sense_embeddings, mu_embeddings = initial_embeddings
         word_vocab_size, word_embedding_dim = word_embeddings.shape
         entity_vocab_size, entity_embedding_dim = entity_embeddings.shape
-        sense_vocab_size, sense_embedding_dim = sense_embeddings.shape
+        self._has_sense = True if sense_embeddings is not None else False
+        if self._has_sense:
+            sense_vocab_size, sense_embedding_dim = sense_embeddings.shape
         self._dim = word_embedding_dim
-        assert self._dim==entity_embedding_dim and self._dim==sense_embedding_dim, "unmatched dim!"
+        assert self._dim==entity_embedding_dim and not ( self._has_sense and self._dim!=sense_embedding_dim), "unmatched dim!"
 
         self.word_embed = Embed(self._dim, word_vocab_size,
                             vectors=word_embeddings, fine_tune=fine_tune_loaded_embeddings)
 
-        self.entity_embed = None
-        if use_entity:
-            self.entity_embed = Embed(self._dim, entity_vocab_size,
+        self.entity_embed = Embed(self._dim, entity_vocab_size,
                             vectors=entity_embeddings, fine_tune=fine_tune_loaded_embeddings)
 
-        self.sense_embed = Embed(self._dim, sense_vocab_size,
-                                  vectors=sense_embeddings, fine_tune=fine_tune_loaded_embeddings)
-        self.mu_embed = Embed(self._dim, sense_vocab_size,
-                                 vectors=mu_embeddings, fine_tune=fine_tune_loaded_embeddings)
+        if self._has_sense:
+            self.sense_embed = Embed(self._dim, sense_vocab_size,
+                                      vectors=sense_embeddings, fine_tune=fine_tune_loaded_embeddings)
+            self.mu_embed = Embed(self._dim, sense_vocab_size,
+                                    vectors=mu_embeddings, fine_tune=fine_tune_loaded_embeddings)
 
-        self.embeds = [self.word_embed, self.sense_embed, self.mu_embed, self.entity_embed]
+        self.embeds = [self.word_embed, self.entity_embed, self.sense_embed, self.mu_embed]
 
         # base_dim + sense_dim + word_dim + 2 + 1(if has entity) + (2+word_dim)(if has contexts) + 1(if has context2 and has entity)
-        self._feature_dim = base_dim + 2*self._dim + 4
+        self._feature_dim = base_dim + 2 + 2*self._dim
         if self._use_entity:
-            self._feature_dim += 2
+            self._feature_dim += 4
 
         if self._use_contexts2:
-            self._feature_dim += 2 + self._dim
+            self._feature_dim += 1 + self._dim
             if self._use_entity:
-                self._feature_dim += 1
+                self._feature_dim += 2
 
         if self._neighbor_window>0:
-            self._feature_dim += 2
+            self._feature_dim += 1
             if self._use_entity:
-                self._feature_dim += 1
+                self._feature_dim += 2
 
         self.mlp_classifier = MLPClassifier(self._feature_dim, 1, layers_dim=layers_dim,
                                             mlp_ln=mlp_ln, dropout=dropout)
 
-    # types: index of [word,sense,mu,entity]
+    # types: index of [word,entity,sense,mu]
     def run_embed(self, x, type):
         embeds = self.embeds[type](x)
         embeds = F.dropout(embeds, self._dropout_rate, training=self.training)
@@ -157,7 +154,7 @@ class MLPC(nn.Module):
     # length: batch
     # num_mentions: batch * cand
     def forward(self, contexts1, base_feature, candidates, m_strs,
-                contexts2=None, candidates_entity=None, num_mentions=None, length=None):
+                contexts2=None, candidates_sense=None, num_mentions=None, length=None):
         batch_size, cand_num, _ = base_feature.shape
         # to gpu
         base_feature = to_gpu(Variable(torch.from_numpy(base_feature))).float()
@@ -186,87 +183,88 @@ class MLPC(nn.Module):
             contexts2 = to_gpu(Variable(torch.from_numpy(contexts2))).long()
             has_context2 = True
 
-        has_entity = False
-        if candidates_entity is not None and self._use_entity:
-            candidates_entity = to_gpu(Variable(torch.from_numpy(candidates_entity))).long()
-            has_entity = True
+        has_sense = False
+        if candidates_sense is not None and self._has_sense:
+            candidates_sense = to_gpu(Variable(torch.from_numpy(candidates_sense))).long()
+            has_sense = True
 
         # get emb, (batch * cand) * dim
-        cand_emb = self.run_embed(candidates, 1)
-        cand_mu_emb = self.run_embed(candidates, 2)
+        cand_entity_emb = self.run_embed(candidates, 1)
+        f1_entity_emb = self.getEmbFeatures(contexts1, q_emb=cand_entity_emb)
 
-        f1_sense_emb = self.getEmbFeatures(contexts1, q_emb=cand_emb)
-        f1_mu_emb = self.getEmbFeatures(contexts1, q_emb=cand_mu_emb)
-        if has_entity:
-            cand_entity_emb = self.run_embed(candidates_entity, 3)
-            f1_entity_emb = self.getEmbFeatures(contexts1, q_emb=cand_entity_emb)
+        if has_sense:
+            cand_sense_emb = self.run_embed(candidates_sense, 2)
+            cand_mu_emb = self.run_embed(candidates_sense, 3)
+            f1_sense_emb = self.getEmbFeatures(contexts1, q_emb=cand_sense_emb)
+            f1_mu_emb = self.getEmbFeatures(contexts1, q_emb=cand_mu_emb)
 
         if has_context2:
-            f2_sense_emb = self.getEmbFeatures(contexts2, q_emb=cand_emb)
-            f2_mu_emb = self.getEmbFeatures(contexts2, q_emb=cand_mu_emb)
-            if has_entity:
-                f2_entity_emb = self.getEmbFeatures(contexts2, q_emb=cand_entity_emb)
+            f2_entity_emb = self.getEmbFeatures(contexts2, q_emb=cand_entity_emb)
+            if has_sense:
+                f2_sense_emb = self.getEmbFeatures(contexts2, q_emb=cand_sense_emb)
+                f2_mu_emb = self.getEmbFeatures(contexts2, q_emb=cand_mu_emb)
 
         # get contextual similarity, (batch * cand) * contextual_sim
-        cand_emb_expand = cand_emb.unsqueeze(1)
-        cand_mu_emb_expand = cand_mu_emb.unsqueeze(1)
-        if has_entity:
-            cand_entity_emb_expand = cand_entity_emb.unsqueeze(1)
+        cand_entity_emb_expand = cand_entity_emb.unsqueeze(1)
+        if has_sense:
+            cand_sense_emb_expand = cand_sense_emb.unsqueeze(1)
+            cand_mu_emb_expand = cand_mu_emb.unsqueeze(1)
 
         # get mention string similarity
-        ms_sense_emb = self.getEmbFeatures(m_strs, q_emb=cand_emb)
-        ms_mu_emb = self.getEmbFeatures(m_strs, q_emb=cand_mu_emb)
-        if has_entity:
-            ms_entity_emb = self.getEmbFeatures(m_strs, q_emb=cand_entity_emb)
+        ms_entity_emb = self.getEmbFeatures(m_strs, q_emb=cand_entity_emb)
+        if has_sense:
+            ms_sense_emb = self.getEmbFeatures(m_strs, q_emb=cand_sense_emb)
+            ms_mu_emb = self.getEmbFeatures(m_strs, q_emb=cand_mu_emb)
 
-        m_sim1 = torch.bmm(cand_emb_expand, ms_sense_emb.unsqueeze(2)).squeeze(2)
-        m_sim2 = torch.bmm(cand_mu_emb_expand, ms_mu_emb.unsqueeze(2)).squeeze(2)
-        if has_entity:
-            m_sim3 = torch.bmm(cand_entity_emb_expand, ms_entity_emb.unsqueeze(2)).squeeze(2)
+        m_sim1 = torch.bmm(cand_entity_emb_expand, ms_entity_emb.unsqueeze(2)).squeeze(2)
+        if has_sense:
+            m_sim2 = torch.bmm(cand_sense_emb_expand, ms_sense_emb.unsqueeze(2)).squeeze(2)
+            m_sim3 = torch.bmm(cand_mu_emb_expand, ms_mu_emb.unsqueeze(2)).squeeze(2)
 
         if has_neighbors:
             # (batch * cand_num) * dim
-            neigh_emb = self.getNeighEmb(ms_sense_emb, cand_num, self._neighbor_window, left_neigh_mask_expand, right_neigh_mask_expand)
-            n_sim1 = torch.bmm(cand_emb_expand, neigh_emb.unsqueeze(2)).squeeze(2)
-            neigh_mu_emb = self.getNeighEmb(ms_mu_emb, cand_num, self._neighbor_window, left_neigh_mask_expand, right_neigh_mask_expand)
-            n_sim2 = torch.bmm(cand_mu_emb_expand, neigh_mu_emb.unsqueeze(2)).squeeze(2)
-            if has_entity:
-                neigh_entity_emb = self.getNeighEmb(ms_entity_emb, cand_num, self._neighbor_window, left_neigh_mask_expand, right_neigh_mask_expand)
-                n_sim3 = torch.bmm(cand_entity_emb_expand, neigh_entity_emb.unsqueeze(2)).squeeze(2)
+            neigh_entity_emb = self.getNeighEmb(ms_entity_emb, cand_num, self._neighbor_window, left_neigh_mask_expand, right_neigh_mask_expand)
+            n_sim1 = torch.bmm(cand_entity_emb_expand, neigh_entity_emb.unsqueeze(2)).squeeze(2)
+            if has_sense:
+                neigh_sense_emb = self.getNeighEmb(ms_sense_emb, cand_num, self._neighbor_window, left_neigh_mask_expand, right_neigh_mask_expand)
+                n_sim2 = torch.bmm(cand_sense_emb_expand, neigh_sense_emb.unsqueeze(2)).squeeze(2)
+                neigh_mu_emb = self.getNeighEmb(ms_mu_emb, cand_num, self._neighbor_window, left_neigh_mask_expand, right_neigh_mask_expand)
+                n_sim3 = torch.bmm(cand_mu_emb_expand, neigh_mu_emb.unsqueeze(2)).squeeze(2)
 
-        # sense : context1
-        sim1 = torch.bmm(cand_emb_expand, f1_sense_emb.unsqueeze(2)).squeeze(2)
-        # mu : context1
-        sim2 = torch.bmm(cand_mu_emb_expand, f1_mu_emb.unsqueeze(2)).squeeze(2)
         # entity: context1
-        if has_entity:
-            sim3 = torch.bmm(cand_entity_emb_expand, f1_entity_emb.unsqueeze(2)).squeeze(2)
+        sim1 = torch.bmm(cand_entity_emb_expand, f1_entity_emb.unsqueeze(2)).squeeze(2)
+        if has_sense:
+            # sense : context1
+            sim2 = torch.bmm(cand_sense_emb_expand, f1_sense_emb.unsqueeze(2)).squeeze(2)
+            # mu : context1
+            sim3 = torch.bmm(cand_mu_emb_expand, f1_mu_emb.unsqueeze(2)).squeeze(2)
 
-        # sense : context2
+
+        # entity: context2
         if has_context2:
-            sim4 = torch.bmm(cand_emb_expand, f2_sense_emb.unsqueeze(2)).squeeze(2)
-            # mu : context2
-            sim5 = torch.bmm(cand_mu_emb_expand, f2_mu_emb.unsqueeze(2)).squeeze(2)
-            # entity: context2
-            if has_entity:
-                sim6 = torch.bmm(cand_entity_emb_expand, f2_entity_emb.unsqueeze(2)).squeeze(2)
+            sim4 = torch.bmm(cand_entity_emb_expand, f2_entity_emb.unsqueeze(2)).squeeze(2)
+            if has_sense:
+                # sense : context2
+                sim5 = torch.bmm(cand_sense_emb_expand, f2_sense_emb.unsqueeze(2)).squeeze(2)
+                # mu : context2
+                sim6 = torch.bmm(cand_mu_emb_expand, f2_mu_emb.unsqueeze(2)).squeeze(2)
 
         # feature vec : batch * cand * feature_dim
-        # feature dim: base_dim + sense_dim + word_dim + 2 + 1(if has entity) +
+        # feature dim: base_dim + 2*dim + 2 + 1(if has entity) +
         # (2+word_dim)(if has contexts) + 1(if has context2 and has entity)
         base_feature = base_feature.view(batch_size * cand_num, -1)
-        h = torch.cat((base_feature, cand_entity_emb, f1_entity_emb, sim1, sim2, m_sim1, m_sim2), dim=1)
-        if has_entity:
-            h = torch.cat((h, sim3, m_sim3), dim=1)
+        h = torch.cat((base_feature, cand_entity_emb, f1_entity_emb, sim1, m_sim1), dim=1)
+        if has_sense:
+            h = torch.cat((h, sim2, sim3, m_sim2, m_sim3), dim=1)
 
         if has_context2:
-            h = torch.cat((h, sim4, sim5, f2_entity_emb), dim=1)
-            if has_entity:
-                h = torch.cat((h, sim6), dim=1)
+            h = torch.cat((h, sim4, f2_entity_emb), dim=1)
+            if has_sense:
+                h = torch.cat((h, sim5, sim6), dim=1)
         if has_neighbors:
-            h = torch.cat((h, n_sim1, n_sim2), dim=1)
-            if has_entity:
-                h = torch.cat((h, n_sim3), dim=1)
+            h = torch.cat((h, n_sim1), dim=1)
+            if has_sense:
+                h = torch.cat((h, n_sim2, n_sim3), dim=1)
 
         h = self.mlp_classifier(h)
         # reshape, batch_size * cand_num

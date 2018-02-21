@@ -176,7 +176,7 @@ def load_data_and_embeddings(
         candidate_handler.saveCandidatesToFile(os.path.join(FLAGS.save_candidates_path,
              '-'.join(dataset_types)+'-'.join(candidate_types)+'_candidate_'+fuzzy_str))
 
-    logger.Log("Unk mention types rate: {:2.6f}% ({}/{}), average candidates: {:2.6f}% ({}/{}) from {}!".format(
+    logger.Log("Unk mention types rate: {:2.6f}% ({}/{}), average candidates: {:2.2f} ({}/{}) from {}!".format(
         (len(mention_vocab)-len(candidate_handler._mention_dict))*100/float(len(mention_vocab)),
         len(mention_vocab) - len(candidate_handler._mention_dict), len(mention_vocab), candidate_handler._candidates_total/float(len(candidate_handler._mention_dict)),
          candidate_handler._candidates_total, len(candidate_handler._mention_dict), FLAGS.candidates_file))
