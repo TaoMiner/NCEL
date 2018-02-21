@@ -2,13 +2,10 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="329c349b-80f9-4249-9672-e99085cdde72" name="Default" comment="">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/el.sh" afterPath="$PROJECT_DIR$/el.sh" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/ncel/models/base.py" afterPath="$PROJECT_DIR$/ncel/models/base.py" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/ncel/models/entity_linking.py" afterPath="$PROJECT_DIR$/ncel/models/entity_linking.py" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/ncel/models/mlp.py" afterPath="$PROJECT_DIR$/ncel/models/mlp.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/ncel/utils/data.py" afterPath="$PROJECT_DIR$/ncel/utils/data.py" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/ncel/utils/logging.py" afterPath="$PROJECT_DIR$/ncel/utils/logging.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/readme" afterPath="$PROJECT_DIR$/readme" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="TRACKING_ENABLED" value="true" />
@@ -31,11 +28,11 @@
   <component name="ExecutionTargetManager" SELECTED_TARGET="default_target" />
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
-      <file leaf-file-name="mlp.py" pinned="false" current-in-tab="true">
+      <file leaf-file-name="mlp.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/ncel/models/mlp.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="-575">
-              <caret line="87" column="38" lean-forward="false" selection-start-line="87" selection-start-column="38" selection-end-line="87" selection-end-column="38" />
+            <state relative-caret-position="472">
+              <caret line="272" column="8" lean-forward="true" selection-start-line="272" selection-start-column="8" selection-end-line="272" selection-end-column="8" />
               <folding>
                 <element signature="e#24#42#0" expanded="true" />
               </folding>
@@ -43,21 +40,11 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="layers.py" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/ncel/utils/layers.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="165">
-              <caret line="311" column="68" lean-forward="false" selection-start-line="311" selection-start-column="68" selection-end-line="311" selection-end-column="68" />
-              <folding />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="entity_linking.py" pinned="false" current-in-tab="false">
+      <file leaf-file-name="entity_linking.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/ncel/models/entity_linking.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="2695">
-              <caret line="180" column="23" lean-forward="true" selection-start-line="180" selection-start-column="23" selection-end-line="180" selection-end-column="23" />
+            <state relative-caret-position="322">
+              <caret line="88" column="25" lean-forward="false" selection-start-line="88" selection-start-column="25" selection-end-line="88" selection-end-column="25" />
               <folding>
                 <element signature="e#24#33#0" expanded="true" />
               </folding>
@@ -78,8 +65,8 @@
       <file leaf-file-name="logging.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/ncel/utils/logging.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="541">
-              <caret line="151" column="29" lean-forward="true" selection-start-line="151" selection-start-column="29" selection-end-line="151" selection-end-column="29" />
+            <state relative-caret-position="349">
+              <caret line="57" column="14" lean-forward="false" selection-start-line="57" selection-start-column="4" selection-end-line="57" selection-end-column="14" />
               <folding>
                 <element signature="e#97#139#0" expanded="true" />
               </folding>
@@ -90,8 +77,8 @@
       <file leaf-file-name="base.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/ncel/models/base.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="464">
-              <caret line="492" column="60" lean-forward="false" selection-start-line="492" selection-start-column="42" selection-end-line="492" selection-end-column="60" />
+            <state relative-caret-position="633">
+              <caret line="415" column="38" lean-forward="false" selection-start-line="415" selection-start-column="27" selection-end-line="415" selection-end-column="38" />
               <folding>
                 <element signature="e#24#34#0" expanded="true" />
               </folding>
@@ -104,6 +91,16 @@
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="115">
               <caret line="121" column="31" lean-forward="false" selection-start-line="121" selection-start-column="8" selection-end-line="121" selection-end-column="31" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="misc.py" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/ncel/utils/misc.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="96">
+              <caret line="69" column="4" lean-forward="false" selection-start-line="69" selection-start-column="4" selection-end-line="69" selection-end-column="4" />
               <folding />
             </state>
           </provider>
@@ -216,11 +213,11 @@
         <option value="$PROJECT_DIR$/ncel/utils/layers.py" />
         <option value="$PROJECT_DIR$/ncel/utils/misc.py" />
         <option value="$PROJECT_DIR$/ncel/utils/trainer.py" />
-        <option value="$PROJECT_DIR$/ncel/models/base.py" />
-        <option value="$PROJECT_DIR$/ncel/utils/logging.py" />
         <option value="$PROJECT_DIR$/ncel/utils/data.py" />
-        <option value="$PROJECT_DIR$/ncel/models/entity_linking.py" />
         <option value="$PROJECT_DIR$/ncel/models/mlp.py" />
+        <option value="$PROJECT_DIR$/ncel/utils/logging.py" />
+        <option value="$PROJECT_DIR$/ncel/models/base.py" />
+        <option value="$PROJECT_DIR$/ncel/models/entity_linking.py" />
       </list>
     </option>
   </component>
@@ -1006,22 +1003,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/ncel/utils/layers.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="165">
-          <caret line="311" column="68" lean-forward="false" selection-start-line="311" selection-start-column="68" selection-end-line="311" selection-end-column="68" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/ncel/utils/misc.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="280">
-          <caret line="26" column="38" lean-forward="true" selection-start-line="26" selection-start-column="38" selection-end-line="26" selection-end-column="38" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/ncel/utils/Candidates.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="225">
@@ -1046,36 +1027,10 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/ncel/utils/trainer.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="142">
-          <caret line="72" column="0" lean-forward="true" selection-start-line="72" selection-start-column="0" selection-end-line="72" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$USER_HOME$/anaconda2/envs/py36/lib/python3.6/site-packages/numpy/core/fromnumeric.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="119">
           <caret line="912" column="0" lean-forward="true" selection-start-line="912" selection-start-column="0" selection-end-line="912" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/ncel/utils/logging.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="541">
-          <caret line="151" column="29" lean-forward="true" selection-start-line="151" selection-start-column="29" selection-end-line="151" selection-end-column="29" />
-          <folding>
-            <element signature="e#97#139#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/ncel/models/featureGenerator.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="115">
-          <caret line="121" column="31" lean-forward="false" selection-start-line="121" selection-start-column="8" selection-end-line="121" selection-end-column="31" />
           <folding />
         </state>
       </provider>
@@ -1090,32 +1045,74 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/ncel/utils/layers.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="165">
+          <caret line="311" column="68" lean-forward="false" selection-start-line="311" selection-start-column="68" selection-end-line="311" selection-end-column="68" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/ncel/utils/trainer.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="142">
+          <caret line="72" column="0" lean-forward="true" selection-start-line="72" selection-start-column="0" selection-end-line="72" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/ncel/models/mlp.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="472">
+          <caret line="272" column="8" lean-forward="true" selection-start-line="272" selection-start-column="8" selection-end-line="272" selection-end-column="8" />
+          <folding>
+            <element signature="e#24#42#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/ncel/models/base.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="464">
-          <caret line="492" column="60" lean-forward="false" selection-start-line="492" selection-start-column="42" selection-end-line="492" selection-end-column="60" />
+        <state relative-caret-position="633">
+          <caret line="415" column="38" lean-forward="false" selection-start-line="415" selection-start-column="27" selection-end-line="415" selection-end-column="38" />
           <folding>
             <element signature="e#24#34#0" expanded="true" />
           </folding>
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/ncel/models/entity_linking.py">
+    <entry file="file://$PROJECT_DIR$/ncel/models/featureGenerator.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="2695">
-          <caret line="180" column="23" lean-forward="true" selection-start-line="180" selection-start-column="23" selection-end-line="180" selection-end-column="23" />
+        <state relative-caret-position="115">
+          <caret line="121" column="31" lean-forward="false" selection-start-line="121" selection-start-column="8" selection-end-line="121" selection-end-column="31" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/ncel/utils/misc.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="96">
+          <caret line="69" column="4" lean-forward="false" selection-start-line="69" selection-start-column="4" selection-end-line="69" selection-end-column="4" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/ncel/utils/logging.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="349">
+          <caret line="57" column="14" lean-forward="false" selection-start-line="57" selection-start-column="4" selection-end-line="57" selection-end-column="14" />
           <folding>
-            <element signature="e#24#33#0" expanded="true" />
+            <element signature="e#97#139#0" expanded="true" />
           </folding>
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/ncel/models/mlp.py">
+    <entry file="file://$PROJECT_DIR$/ncel/models/entity_linking.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-575">
-          <caret line="87" column="38" lean-forward="false" selection-start-line="87" selection-start-column="38" selection-end-line="87" selection-end-column="38" />
+        <state relative-caret-position="322">
+          <caret line="88" column="25" lean-forward="false" selection-start-line="88" selection-start-column="25" selection-end-line="88" selection-end-column="25" />
           <folding>
-            <element signature="e#24#42#0" expanded="true" />
+            <element signature="e#24#33#0" expanded="true" />
           </folding>
         </state>
       </provider>

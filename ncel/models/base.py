@@ -362,7 +362,7 @@ def get_flags():
     gflags.DEFINE_float("l2_lambda", 1e-5, "")
     gflags.DEFINE_float("dropout", 0.1, "Used for dropout.")
     gflags.DEFINE_integer("batch_size", 32, "Minibatch size.")
-    gflags.DEFINE_boolean( "smart_batching", True, "Organize batches using sequence length.")
+    gflags.DEFINE_boolean("smart_batching", True, "Organize batches using sequence length.")
     gflags.DEFINE_boolean("fine_tune_loaded_embeddings", False,
                           "If set, backpropagate into embeddings even when initializing from pretrained.")
 
@@ -379,10 +379,7 @@ def get_flags():
     # Model architecture settings.
     gflags.DEFINE_enum(
         "model_type", "NCEL", [
-            "GBDT",
-            "MLP",
-            "NCEL",
-            "NCEL_P"], "")
+                        "MLP"], "")
     gflags.DEFINE_boolean("str_sim", True, ".")
     gflags.DEFINE_boolean("prior", True, ".")
     gflags.DEFINE_boolean("att", True, ".")
@@ -392,37 +389,11 @@ def get_flags():
     gflags.DEFINE_integer("global_context_window", 0, ".")
 
     gflags.DEFINE_integer("embedding_dim", 200, ".")
-    gflags.DEFINE_integer(
-        "mlp_dim",
-        300,
-        "Dimension of intermediate MLP layers.")
-    gflags.DEFINE_integer("num_mlp_layers", 1, "Number of MLP layers.")
     gflags.DEFINE_boolean(
         "mlp_ln",
         False,
         "When True, layer normalization is used between MLP layers.")
     gflags.DEFINE_integer("gpu", -1, "")
-
-    gflags.DEFINE_integer(
-        "gc_dim",
-        300,
-        "Dimension of intermediate MLP layers.")
-    gflags.DEFINE_integer("num_gc_layer", 2, "Number of Graph convolutional layers.")
-    gflags.DEFINE_integer("res_gc_layer_num", 2, "Number of res Graph convolutional layers.")
-    gflags.DEFINE_boolean(
-        "gc_ln",
-        False,
-        "When True, layer normalization is used between gc layers.")
-
-    gflags.DEFINE_integer(
-        "classifier_dim",
-        300,
-        "Dimension of output MLP layers.")
-    gflags.DEFINE_integer("num_cm_layer", 1, "Number of classifier mlp layers.")
-    gflags.DEFINE_boolean(
-        "cm_ln",
-        False,
-        "When True, layer normalization is used between classifier mlp layers.")
 
     # Display settings.
     gflags.DEFINE_integer(
@@ -442,6 +413,7 @@ def get_flags():
         5000,
         "If development set error doesn't improve significantly in this many steps, cease training.")
     gflags.DEFINE_boolean("write_eval_report", False, "")
+    gflags.DEFINE_boolean("show_sample", False, "")
 
 def flag_defaults(FLAGS, load_log_flags=False):
     if load_log_flags:

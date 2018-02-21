@@ -74,17 +74,17 @@ class MLPC(nn.Module):
 
         # base_dim + sense_dim + word_dim + 2 + 1(if has entity) + (2+word_dim)(if has contexts) + 1(if has context2 and has entity)
         self._feature_dim = base_dim + 2 + 2*self._dim
-        if self._use_entity:
+        if self._has_sense:
             self._feature_dim += 4
 
         if self._use_contexts2:
             self._feature_dim += 1 + self._dim
-            if self._use_entity:
+            if self._has_sense:
                 self._feature_dim += 2
 
         if self._neighbor_window>0:
             self._feature_dim += 1
-            if self._use_entity:
+            if self._has_sense:
                 self._feature_dim += 2
 
         self.mlp_classifier = MLPClassifier(self._feature_dim, 1, layers_dim=layers_dim,

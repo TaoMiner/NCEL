@@ -148,6 +148,8 @@ def print_samples(output, vocabulary, docs, only_one=False):
                     doc_sequence.append(["candidate", str(j), ":", ent_id_vocab[m.candidates[j].id], ent_label_vocab[m.candidates[j].id], str(p)])
                 else:
                     doc_sequence.append(["pad", str(j), ":", str(p)])
+        doc_line = ''
         for line in doc_sequence:
-            sample_sequences.append(' '.join(line))
+            doc_line += ' '.join(line) + '\n'
+        sample_sequences.append(doc_line)
     return sample_sequences

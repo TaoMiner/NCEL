@@ -219,7 +219,7 @@ def train_loop(
             test_acc = None
             for index, eval_set in enumerate(eval_iterators):
                 acc = evaluate(
-                    FLAGS, model, eval_set, log_entry, logger, show_sample=False, vocabulary=vocabulary, eval_index=index)
+                    FLAGS, model, eval_set, log_entry, logger, show_sample=FLAGS.show_sample, vocabulary=vocabulary, eval_index=index)
                 if index == 0: dev_acc = acc
                 else: test_acc = acc
             trainer.new_accuracy(dev_acc, test_acc=test_acc)
