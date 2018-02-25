@@ -11,7 +11,7 @@ from ncel.utils.layers import Embed, to_gpu, MLPClassifier
 
 
 def build_model(base_feature_dim, initial_embeddings, FLAGS):
-    model_cls = MLPC
+    model_cls = PNCEL
     layers_dim = [2000]
     use_contexts2 = FLAGS.use_lr_context
     use_att = FLAGS.att
@@ -25,24 +25,23 @@ def build_model(base_feature_dim, initial_embeddings, FLAGS):
         fine_tune_loaded_embeddings=FLAGS.fine_tune_loaded_embeddings,
         use_contexts2=use_contexts2,
         use_att=use_att,
-        neighbor_window = neighbor_window
+        neighbor_window=neighbor_window
     )
 
 
-class MLPC(nn.Module):
-
+class PNCEL(nn.Module):
     def __init__(self,
                  base_dim,
                  initial_embeddings,
                  layers_dim=[],
                  mlp_ln=False,
-                 dropout = 0.0,
+                 dropout=0.0,
                  fine_tune_loaded_embeddings=None,
                  use_contexts2=True,
                  use_att=True,
                  neighbor_window=3
                  ):
-        super(MLPC, self).__init__()
+        super(PNCEL, self).__init__()
 
         self._use_contexts2 = use_contexts2
         self._use_att = use_att
@@ -56,24 +55,25 @@ class MLPC(nn.Module):
         if self._has_sense:
             sense_vocab_size, sense_embedding_dim = sense_embeddings.shape
         self._dim = word_embedding_dim
-        assert self._dim==entity_embedding_dim and not ( self._has_sense and self._dim!=sense_embedding_dim), "unmatched dim!"
+        assert self._dim == entity_embedding_dim and not (
+        self._has_sense and self._dim != sense_embedding_dim), "unmatched dim!"
 
         self.word_embed = Embed(self._dim, word_vocab_size,
-                            vectors=word_embeddings, fine_tune=fine_tune_loaded_embeddings)
+                                vectors=word_embeddings, fine_tune=fine_tune_loaded_embeddings)
 
         self.entity_embed = Embed(self._dim, entity_vocab_size,
-                            vectors=entity_embeddings, fine_tune=fine_tune_loaded_embeddings)
+                                  vectors=entity_embeddings, fine_tune=fine_tune_loaded_embeddings)
 
         if self._has_sense:
             self.sense_embed = Embed(self._dim, sense_vocab_size,
-                                      vectors=sense_embeddings, fine_tune=fine_tune_loaded_embeddings)
+                                     vectors=sense_embeddings, fine_tune=fine_tune_loaded_embeddings)
             self.mu_embed = Embed(self._dim, sense_vocab_size,
-                                    vectors=mu_embeddings, fine_tune=fine_tune_loaded_embeddings)
+                                  vectors=mu_embeddings, fine_tune=fine_tune_loaded_embeddings)
 
         self.embeds = [self.word_embed, self.entity_embed, self.sense_embed, self.mu_embed]
 
         # base_dim + sense_dim + word_dim + 2 + 1(if has entity) + (2+word_dim)(if has contexts) + 1(if has context2 and has entity)
-        self._feature_dim = base_dim + 2 + 2*self._dim
+        self._feature_dim = base_dim + 2 + 2 * self._dim
         if self._has_sense:
             self._feature_dim += 4
 
@@ -82,7 +82,7 @@ class MLPC(nn.Module):
             if self._has_sense:
                 self._feature_dim += 2
 
-        if self._neighbor_window>0:
+        if self._neighbor_window > 0:
             self._feature_dim += 1
             if self._has_sense:
                 self._feature_dim += 2
@@ -111,12 +111,12 @@ class MLPC(nn.Module):
         return f_emb
 
     def leftMvNeigh(self, emb, mv_steps, margin_col, mask):
-        left_neigh_emb = torch.cat([margin_col, emb[:-mv_steps,:]], dim=0)
+        left_neigh_emb = torch.cat([margin_col, emb[:-mv_steps, :]], dim=0)
         left_neigh_emb = left_neigh_emb * mask
         return left_neigh_emb
 
     def rightMvNeigh(self, emb, mv_steps, margin_col, mask):
-        right_neigh_emb = torch.cat([emb[mv_steps:,:], margin_col], dim=0)
+        right_neigh_emb = torch.cat([emb[mv_steps:, :], margin_col], dim=0)
         right_neigh_emb = right_neigh_emb * mask
         return right_neigh_emb
 
@@ -127,7 +127,7 @@ class MLPC(nn.Module):
         # left_neighs: (batch_size*cand_num) * window * dim
         tmp_left_neigh_list = []
         tmp_left_neigh_list.append(self.leftMvNeigh(mstr_emb, cand_num, margin_col, left_mask))
-        for i in range(neighbor_window-1):
+        for i in range(neighbor_window - 1):
             tmp_left_neigh_list.append(self.leftMvNeigh(tmp_left_neigh_list[i], cand_num, margin_col, left_mask))
         for i, neigh in enumerate(tmp_left_neigh_list):
             tmp_left_neigh_list[i] = tmp_left_neigh_list[i].unsqueeze(1)
@@ -173,9 +173,9 @@ class MLPC(nn.Module):
             # batch * cand
             margin_col = to_gpu(Variable(torch.zeros(1, cand_num), requires_grad=False))
             right_neigh_mask = to_gpu(Variable(torch.from_numpy(num_mentions), requires_grad=False)).float()
-            left_neigh_mask = torch.cat([margin_col, right_neigh_mask[:-1,:]], dim=0)
-            right_neigh_mask_expand = right_neigh_mask.view(-1).unsqueeze(1).expand(batch_size*cand_num, self._dim)
-            left_neigh_mask_expand = left_neigh_mask.view(-1).unsqueeze(1).expand(batch_size*cand_num, self._dim)
+            left_neigh_mask = torch.cat([margin_col, right_neigh_mask[:-1, :]], dim=0)
+            right_neigh_mask_expand = right_neigh_mask.view(-1).unsqueeze(1).expand(batch_size * cand_num, self._dim)
+            left_neigh_mask_expand = left_neigh_mask.view(-1).unsqueeze(1).expand(batch_size * cand_num, self._dim)
             has_neighbors = True
 
         has_context2 = False
@@ -223,12 +223,15 @@ class MLPC(nn.Module):
 
         if has_neighbors:
             # (batch * cand_num) * dim
-            neigh_entity_emb = self.getNeighEmb(ms_entity_emb, cand_num, self._neighbor_window, left_neigh_mask_expand, right_neigh_mask_expand)
+            neigh_entity_emb = self.getNeighEmb(ms_entity_emb, cand_num, self._neighbor_window, left_neigh_mask_expand,
+                                                right_neigh_mask_expand)
             n_sim1 = torch.bmm(cand_entity_emb_expand, neigh_entity_emb.unsqueeze(2)).squeeze(2)
             if has_sense:
-                neigh_sense_emb = self.getNeighEmb(ms_sense_emb, cand_num, self._neighbor_window, left_neigh_mask_expand, right_neigh_mask_expand)
+                neigh_sense_emb = self.getNeighEmb(ms_sense_emb, cand_num, self._neighbor_window,
+                                                   left_neigh_mask_expand, right_neigh_mask_expand)
                 n_sim2 = torch.bmm(cand_sense_emb_expand, neigh_sense_emb.unsqueeze(2)).squeeze(2)
-                neigh_mu_emb = self.getNeighEmb(ms_mu_emb, cand_num, self._neighbor_window, left_neigh_mask_expand, right_neigh_mask_expand)
+                neigh_mu_emb = self.getNeighEmb(ms_mu_emb, cand_num, self._neighbor_window, left_neigh_mask_expand,
+                                                right_neigh_mask_expand)
                 n_sim3 = torch.bmm(cand_mu_emb_expand, neigh_mu_emb.unsqueeze(2)).squeeze(2)
 
         # entity: context1
@@ -238,7 +241,6 @@ class MLPC(nn.Module):
             sim2 = torch.bmm(cand_sense_emb_expand, f1_sense_emb.unsqueeze(2)).squeeze(2)
             # mu : context1
             sim3 = torch.bmm(cand_mu_emb_expand, f1_mu_emb.unsqueeze(2)).squeeze(2)
-
 
         # entity: context2
         if has_context2:
@@ -289,6 +291,7 @@ def sequence_mask(sequence_length, max_length):
         seq_range_expand = seq_range_expand.cuda()
     seq_length_expand = sequence_length.unsqueeze(1)
     return seq_range_expand < seq_length_expand
+
 
 # batch * cand_num
 def masked_softmax(logits, mask=None):

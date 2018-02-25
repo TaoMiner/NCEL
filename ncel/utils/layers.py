@@ -240,14 +240,17 @@ class MLPClassifier(nn.Module):
             self.mlp_layer = None
             self.classifier = Linear(initializer=UniInitializer)(input_dim, num_class)
 
-    def forward(self, h):
-
+    def forward(self, h, length=None):
+        batch_size, _ = h.size()
         if self.mlp_ln:
             h = self.ln_inp(h)
         if self.mlp_layer is not None:
-            h = self.mlp_layer(h)
+            h = self.mlp_layer(h, length=length)
         h = F.dropout(h, self.drop_out_rate, training=self.training)
         h = self.classifier(h)
+        if length is not None:
+            mask = length.unsqueeze(1).expand(batch_size, self.num_class)
+            h = h * mask
         if self.num_class == 1:
             h = h.squeeze()
         else:
@@ -274,12 +277,18 @@ class MLP(nn.Module):
         for i in range(self.num_mlp_layers):
             hidden_dim = layers_dim[i]
             setattr(self, 'l{}'.format(i), Linear()(features_dim, hidden_dim))
+            setattr(self, 'd{}'.format(i), hidden_dim)
             features_dim = hidden_dim
 
-    def forward(self, h):
+    def forward(self, h, length=None):
+        batch_size, _ = h.size()
         for i in range(self.num_mlp_layers):
             layer = getattr(self, 'l{}'.format(i))
+            dim = getattr(self, 'd{}'.format(i))
             h = layer(h)
+            if length is not None:
+                mask = length.unsqueeze(1).expand(batch_size, dim)
+                h = h * mask
             h = F.relu(h)
         return h
 

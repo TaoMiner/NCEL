@@ -138,7 +138,7 @@ def print_samples(output, vocabulary, docs, only_one=False):
             doc_sequence[m._sent_idx][m._pos_in_sent+m._mention_length-1] += " ]]"
 
             out_mention = output[m_idx, :]
-            pred_cid = m.candidates[np.argmax(out_mention)].id
+            pred_cid = m.candidates[np.argmax(out_mention[:cand_size])].id
             doc_sequence.append(["mention:", str(i), "correct:", "true" if m.gold_ent_id()==pred_cid else "False",
                                      ",cand:", str(cand_size),
                                      ", gold:", ent_id_vocab[m.gold_ent_id()], m.gold_ent_str()])

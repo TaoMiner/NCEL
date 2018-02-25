@@ -379,6 +379,7 @@ def get_flags():
     # Model architecture settings.
     gflags.DEFINE_enum(
         "model_type", "NCEL", [
+                        "NCEL",
                         "MLP"], "")
     gflags.DEFINE_boolean("str_sim", True, ".")
     gflags.DEFINE_boolean("prior", True, ".")
