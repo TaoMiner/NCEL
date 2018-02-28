@@ -40,61 +40,39 @@ class LayerNormalization(nn.Module):
         ln_out = ln_out * self.a2 + self.b2
         return ln_out
 
-MAX_DIFF = 128
 class GraphConvolutionNetwork(Module):
-    def __init__(self, input_dim, hidden_dim, gc_ln=False, bias=True,
-            num_layers=1, dropout=0.0, res_gc_layer_num=0):
+    def __init__(self, input_dim, output_dim, layers_dim=[], gc_ln=False, bias=True, dropout=0.0):
         super(GraphConvolutionNetwork, self).__init__()
 
-        self.num_layers = num_layers
         self.dropout_rate = dropout
-        self.hidden_dim = hidden_dim
         self.gc_ln = gc_ln
 
         if self.gc_ln:
             self.ln_inp = LayerNormalization(input_dim)
 
+        self._layers_dim = layers_dim
+        self._layers_dim.append(output_dim)
+        self._num_layers = len(self._layers_dim)
         features_dim = input_dim
-        layer_diff = features_dim - hidden_dim
-        is_dim_increase = False
-        if layer_diff > 0 and layer_diff > MAX_DIFF :
-            layer_diff = MAX_DIFF
-        elif layer_diff < 0 and layer_diff < -MAX_DIFF :
-            layer_diff = -MAX_DIFF
-            is_dim_increase = True
-        layer_dim = features_dim - layer_diff
-
-        for i in range(num_layers):
-            if (not is_dim_increase and layer_dim < hidden_dim) or \
-                    (is_dim_increase and layer_dim > hidden_dim) \
-                        or i==num_layers-1: layer_dim=hidden_dim
-            setattr(self, 'l{}'.format(i), ResGraphConvolution(
-                                            features_dim, layer_dim, gc_ln=gc_ln, bias=bias,
-                                            num_layers=res_gc_layer_num, dropout=dropout))
-            setattr(self, 'f{}'.format(i), layer_dim)
-            if self.gc_ln:
-                setattr(self, 'ln{}'.format(i), LayerNormalization(layer_dim))
-            features_dim = layer_dim
-            layer_dim -= layer_diff
+        for i in range(self._num_layers):
+            hidden_dim = layers_dim[i]
+            setattr(self, 'l{}'.format(i), GraphConvolution(features_dim, hidden_dim, bias=bias))
+            setattr(self, 'd{}'.format(i), hidden_dim)
+            features_dim = hidden_dim
 
     def forward(self, h, adj, mask=None):
         batch_size, node_num, feature_dim = h.size()
         if self.gc_ln:
             h = self.ln_inp(h)
         h = F.dropout(h, self.dropout_rate, training=self.training)
-        for i in range(self.num_layers):
+        for i in range(self._num_layers):
             layer = getattr(self, 'l{}'.format(i))
+            dim = getattr(self, 'd{}'.format(i))
             h = layer(h, adj)
             h = F.relu(h)
-            if not isinstance(mask, type(None)):
-                f = getattr(self, 'f{}'.format(i))
-                gc_mask = mask.unsqueeze(2).expand(batch_size, node_num, f)
-                gc_mask = gc_mask.float()
-                h = h * gc_mask
-            if self.gc_ln:
-                ln = getattr(self, 'ln{}'.format(i))
-                h = ln(h)
-            h = F.dropout(h, self.dropout_rate, training=self.training)
+            if mask is not None:
+                mask = mask.unsqueeze(1).expand(batch_size, dim)
+                h = h * mask
         return h
 
     def reset_parameters(self):
@@ -199,7 +177,7 @@ class GraphConvolution(Module):
 
     # input: batch_size * node_num * in_features
     # adj : batch_size * node_num * node_num
-    def forward(self, input, adj, mask=None):
+    def forward(self, input, adj):
         support = input.matmul(self.weight)
         output = torch.bmm(adj, support)
 
@@ -213,6 +191,45 @@ class GraphConvolution(Module):
                + str(self.in_features) + ' -> ' \
                + str(self.out_features) + ')'
 
+class SubGraphConvolution(Module):
+    """
+    Simple GCN layer, similar to https://arxiv.org/abs/1609.02907
+    """
+    def __init__(self, in_features, out_features, bias=True):
+        super(SubGraphConvolution, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.weight = Parameter(torch.Tensor(in_features, out_features))
+        if bias:
+            self.bias = Parameter(torch.Tensor(out_features))
+        else:
+            self.register_parameter('bias', None)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        stdv = 1. / math.sqrt(self.weight.size(1))
+        self.weight.data.uniform_(-stdv, stdv)
+        if self.bias is not None:
+            self.bias.data.uniform_(-stdv, stdv)
+
+    # input: (batch_size * node_num) * neighbors * in_features
+    # adj : (batch_size * node_num) * 1 * neighbors
+    def forward(self, input, adj):
+        support = input.matmul(self.weight)
+        output = torch.bmm(adj, support).squeeze(1)
+
+        if self.bias is not None:
+            output =  output + self.bias
+        if self.out_features == 1:
+            output = output.squeeze()
+        else:
+            output = F.softmax(output)
+        return output
+
+    def __repr__(self):
+        return self.__class__.__name__ + ' (' \
+               + str(self.in_features) + ' -> ' \
+               + str(self.out_features) + ')'
 
 class MLPClassifier(nn.Module):
     def __init__(self,
