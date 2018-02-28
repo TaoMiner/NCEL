@@ -132,7 +132,7 @@ class PNCEL(nn.Module):
         right_neigh_emb = right_neigh_emb * mask
         return right_neigh_emb
 
-    def getNeighborMask(self, num_mentions):
+    def getNeighborMask(self, num_mentions, dim):
         batch_size, cand_num = num_mentions.shape
         # batch * cand_num
         margin_col = to_gpu(Variable(torch.zeros(1, cand_num), requires_grad=False))
@@ -141,8 +141,8 @@ class PNCEL(nn.Module):
         left_mask = torch.cat([margin_col, right_mask[:-1, :]], dim=0)
 
         # (batch * cand_num) * dim
-        right_mask_expand = right_mask.view(-1).unsqueeze(1).expand(batch_size * cand_num, self._dim)
-        left_mask_expand = left_mask.view(-1).unsqueeze(1).expand(batch_size * cand_num, self._dim)
+        right_mask_expand = right_mask.view(-1).unsqueeze(1).expand(batch_size * cand_num, dim)
+        left_mask_expand = left_mask.view(-1).unsqueeze(1).expand(batch_size * cand_num, dim)
         return left_mask_expand, right_mask_expand
 
     def getNeighborMentionEmbeddingsForCandidate(self, mention_emb, margin_col, cand_num, neighbor_window, left_mask, right_mask):
@@ -176,10 +176,10 @@ class PNCEL(nn.Module):
     # mask: (batch * cand_num) * dim
     def getNeighborMentionEmbeddings(self, mention_embeddings, neighbor_window, num_mentions):
         batch_size, cand_num = num_mentions.shape
-        left_mask, right_mask = self.getNeighborMask(num_mentions)
-        margin_col = to_gpu(Variable(torch.zeros(cand_num, self._dim), requires_grad=False))
-
         entity_emb, sense_emb, mu_emb = mention_embeddings
+        _, dim = entity_emb.size()
+        left_mask, right_mask = self.getNeighborMask(num_mentions, dim)
+        margin_col = to_gpu(Variable(torch.zeros(cand_num, dim), requires_grad=False))
 
         neibor_ment_entity_emb = self.getNeighborMentionEmbeddingsForCandidate(entity_emb,
                                  margin_col, cand_num, neighbor_window, left_mask, right_mask)
@@ -198,34 +198,35 @@ class PNCEL(nn.Module):
         tmp_neigh_cand = tmp_neigh_cand.unsqueeze(1).expand(batch_size, cand_num,
                                                             cand_num, dim)
         # (batch * cand) * cand * dim
-        tmp_neigh_cand = tmp_neigh_cand.view(batch_size * cand_num, cand_num, dim)
+        tmp_neigh_cand = tmp_neigh_cand.contiguous().view(batch_size * cand_num, cand_num, dim)
         return tmp_neigh_cand
 
     def getNeighCandidates(self, emb, window, num_mentions):
         batch_size, cand_num = num_mentions.shape
-        left_mask, right_mask = self.getNeighborMask(num_mentions)
-        margin_col = to_gpu(Variable(torch.zeros(cand_num, self._dim), requires_grad=False))
+        _, dim = emb.size()
+        left_mask, right_mask = self.getNeighborMask(num_mentions, dim)
+        margin_col = to_gpu(Variable(torch.zeros(cand_num, dim), requires_grad=False))
         left_list = []
         # (batch * cand) * dim
         tmp_neigh = self.leftNeighbor(emb, cand_num, margin_col, left_mask)
-        tmp_neigh_cand = self.getExpandNeighCandidates(tmp_neigh, batch_size, cand_num, self._dim)
+        tmp_neigh_cand = self.getExpandNeighCandidates(tmp_neigh, batch_size, cand_num, dim)
         left_list.append(tmp_neigh_cand)
         for i in range(window - 1):
             tmp_neigh = self.leftNeighbor(emb, cand_num, margin_col, left_mask)
             tmp_neigh_cand = self.getExpandNeighCandidates(tmp_neigh, batch_size,
-                                                           cand_num, self._dim)
+                                                           cand_num, dim)
             left_list.append(tmp_neigh_cand)
         # (batch * cand) * (window*cand) * dim
         left_cands = torch.cat(left_list, dim=1)
 
         right_list = []
         tmp_neigh = self.rightNeighbor(emb, cand_num, margin_col, right_mask)
-        tmp_neigh_cand = self.getExpandNeighCandidates(tmp_neigh, batch_size, cand_num, self._dim)
+        tmp_neigh_cand = self.getExpandNeighCandidates(tmp_neigh, batch_size, cand_num, dim)
         right_list.append(tmp_neigh_cand)
         for i in range(window - 1):
             tmp_neigh = self.rightNeighbor(emb, cand_num, margin_col, right_mask)
             tmp_neigh_cand = self.getExpandNeighCandidates(tmp_neigh, batch_size,
-                                                           cand_num, self._dim)
+                                                           cand_num, dim)
             right_list.append(tmp_neigh_cand)
         # (batch * cand) * (window*cand) * dim
         right_cands = torch.cat(right_list, dim=1)
@@ -326,7 +327,7 @@ class PNCEL(nn.Module):
         # to gpu
         base_feature = to_gpu(Variable(torch.from_numpy(base_feature))).float()
         base_feature = base_feature.view(batch_size * cand_num, -1)
-        features.extend(base_feature)
+        features.append(base_feature)
 
         # candidate mask
         length_mask = None
@@ -396,9 +397,10 @@ class PNCEL(nn.Module):
             if length_mask is not None:
                 mask = length_mask.view(-1).unsqueeze(1).expand(batch_size*cand_num, dim)
                 h = h * mask
-        h = F.dropout(h, self.drop_out_rate, training=self.training)
+        h = F.dropout(h, self._dropout_rate, training=self.training)
         h = self.getExpandFeature(h, self._neighbor_window, num_mentions)
-        h = self.gc_classifier(h, adj)
+        h = self.gc_classifier(h, adj).squeeze()
+
         # reshape, batch_size * cand_num
         h = h.view(batch_size, -1)
 

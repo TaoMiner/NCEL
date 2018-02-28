@@ -220,10 +220,6 @@ class SubGraphConvolution(Module):
 
         if self.bias is not None:
             output =  output + self.bias
-        if self.out_features == 1:
-            output = output.squeeze()
-        else:
-            output = F.softmax(output)
         return output
 
     def __repr__(self):
