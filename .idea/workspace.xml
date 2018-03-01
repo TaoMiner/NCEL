@@ -64,7 +64,6 @@
       <file leaf-file-name="entity_linking.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/ncel/models/entity_linking.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="472">
               <caret line="182" column="54" lean-forward="false" selection-start-line="182" selection-start-column="54" selection-end-line="182" selection-end-column="54" />
               <folding>
                 <element signature="e#24#33#0" expanded="true" />
@@ -1089,7 +1088,6 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/ncel/models/entity_linking.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="472">
           <caret line="182" column="54" lean-forward="false" selection-start-line="182" selection-start-column="54" selection-end-line="182" selection-end-column="54" />
           <folding>
             <element signature="e#24#33#0" expanded="true" />

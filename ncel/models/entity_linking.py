@@ -82,6 +82,12 @@ def evaluate(FLAGS, model, eval_set, log_entry,
         if FLAGS.write_eval_report and report_sample:
             batch_samples = print_samples(output.data.cpu().numpy(), vocabulary, dataset_batch, only_one=False)
             reporter.save_batch(batch_samples)
+            # log graph
+            _, entity_vocab, _, id2wiki_vocab = vocabulary
+            samples = model.getGraphSample(cids, num_mentions, entity_vocab, id2wiki_vocab, only_one=False)
+            for sample in samples:
+                logger.Log(";".join(["{}<-{}->{}".format(edge[0], edge[2], edge[1])
+                                     for edge in sample]))
 
         # Print Progress
         progress_bar.step(i + 1, total=total_batches)
@@ -174,13 +180,6 @@ def train_loop(
         output = model(context1, base, cids, m_strs,
                        contexts2=context2, candidates_sense=cids_sense,
                        num_mentions=num_mentions, length=num_candidates)
-
-        # log graph
-        _, entity_vocab, _, id2wiki_vocab = vocabulary
-        samples = model.getGraphSample(cids, num_mentions, entity_vocab, id2wiki_vocab, only_one=False)
-        for sample in samples:
-            logger.Log(";".join(["{}<-{}->{}".format(edge[0], edge[2], edge[1])
-                                 for edge in sample]))
 
         target = torch.from_numpy(y).long()
         # Calculate accuracy.
