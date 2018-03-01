@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 import numpy as np
-
+import math
 # PyTorch
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
+from torch.nn.parameter import Parameter
+from torch.nn.init import kaiming_normal, uniform
 
 from ncel.utils.layers import Embed, to_gpu, SubGraphConvolution, LayerNormalization
 
@@ -19,7 +21,7 @@ def build_model(base_feature_dim, initial_embeddings, FLAGS):
     use_embedding_feature = True
     neighbor_window = 3
     bias = True
-    rho = 0
+    rho = 0.0
     return model_cls(
         base_feature_dim,
         initial_embeddings,
@@ -48,7 +50,9 @@ class PNCEL(nn.Module):
                  use_att=True,
                  use_embedding_feature=True,
                  neighbor_window=3,
-                 rho=1.0
+                 rho=1.0,
+                 initializer=kaiming_normal,
+                 bias_initializer=ZeroInitializer
                  ):
         super(PNCEL, self).__init__()
 
@@ -58,6 +62,8 @@ class PNCEL(nn.Module):
         self._neighbor_window = neighbor_window
         self._gc_ln = gc_ln
         self._rho = rho
+        self._w_initializer = kaiming_normal
+        self._bias_initializer = ZeroInitializer
 
         word_embeddings, entity_embeddings, sense_embeddings, mu_embeddings = initial_embeddings
         word_vocab_size, word_embedding_dim = word_embeddings.shape
@@ -101,10 +107,13 @@ class PNCEL(nn.Module):
 
         for i in range(self._num_layers):
             hidden_dim = layers_dim[i]
-            setattr(self, 'l{}'.format(i), SubGraphConvolution(features_dim, hidden_dim, bias=bias))
+            setattr(self, 'w{}'.format(i), Parameter(torch.Tensor(features_dim, hidden_dim)))
+            setattr(self, 'b{}'.format(i), Parameter(torch.Tensor(hidden_dim)) if bias else None)
             setattr(self, 'd{}'.format(i), hidden_dim)
             features_dim = hidden_dim
-        self.gc_classifier = SubGraphConvolution(features_dim, 1, bias=bias)
+        self.gc_classifier_w = Parameter(torch.Tensor(features_dim, 1))
+        self.gc_classifier_b = Parameter(torch.Tensor(1)) if bias else None
+        self.reset_parameters()
 
     # types: index of [word,entity,sense,mu]
     def run_embed(self, x, type):
@@ -392,29 +401,42 @@ class PNCEL(nn.Module):
         if self._gc_ln:
             h = self.ln_inp(h)
         for i in range(self._num_layers):
-            layer = getattr(self, 'l{}'.format(i))
+            w = getattr(self, 'w{}'.format(i))
+            b = getattr(self, 'b{}'.format(i))
             dim = getattr(self, 'd{}'.format(i))
+            h = h.matmul(w)
             # (batch_size * cand_num) * (2*window*cand_num+1) * f_dim
             h = self.getExpandFeature(h, self._neighbor_window, num_mentions)
-            h = layer(h, adj)
+            h = torch.bmm(adj, h)
+            if b is not None: h = h + b
             h = F.relu(h)
             # h: (batch_size * cand_num) * feature_dim
             if length_mask is not None:
                 mask = length_mask.view(-1).unsqueeze(1).expand(batch_size*cand_num, dim)
                 h = h * mask
         h = F.dropout(h, self._dropout_rate, training=self.training)
+
+        h = h.matmul(self.gc_classifier_w)
+        # (batch_size * cand_num) * (2*window*cand_num+1) * f_dim
         h = self.getExpandFeature(h, self._neighbor_window, num_mentions)
-        h = self.gc_classifier(h, adj).squeeze()
+        h = torch.bmm(adj, h)
+        if self.gc_classifier_b is not None: h = h + self.gc_classifier_b
 
         # reshape, batch_size * cand_num
-        h = h.view(batch_size, -1)
+        h = h.squeeze().view(batch_size, -1)
         output = masked_softmax(h, mask=length_mask)
         return output
 
     def reset_parameters(self):
-        if self.mlp_layer is not None:
-            self.mlp_layer.reset_parameters()
-        self.classifier.reset_parameters()
+        for i in range(self._num_layers):
+            w = getattr(self, 'w{}'.format(i))
+            b = getattr(self, 'b{}'.format(i))
+            self._w_initializer(w)
+            if b is not None:
+                self._bias_initializer(b)
+        self._w_initializer(self.gc_classifier_w)
+        if self.gc_classifier_b is not None:
+            self._bias_initializer(self.gc_classifier_b)
 
 # length: batch_size
 def sequence_mask(sequence_length, max_length):
@@ -434,3 +456,11 @@ def masked_softmax(logits, mask=None):
         logits = logits * mask
     probs = F.softmax(logits, dim=1)
     return probs
+
+def ZeroInitializer(param):
+    shape = param.size()
+    init = np.zeros(shape).astype(np.float32)
+    param.data.set_(torch.from_numpy(init))
+
+def UniInitializer(param):
+    uniform(param, -0.005, 0.005)
