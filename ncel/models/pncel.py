@@ -19,6 +19,7 @@ def build_model(base_feature_dim, initial_embeddings, FLAGS):
     use_embedding_feature = True
     neighbor_window = 3
     bias = True
+    rho = 0
     return model_cls(
         base_feature_dim,
         initial_embeddings,
@@ -30,7 +31,8 @@ def build_model(base_feature_dim, initial_embeddings, FLAGS):
         use_contexts2=use_contexts2,
         use_att=use_att,
         use_embedding_feature=use_embedding_feature,
-        neighbor_window=neighbor_window
+        neighbor_window=neighbor_window,
+        rho=rho
     )
 
 class PNCEL(nn.Module):
@@ -45,7 +47,8 @@ class PNCEL(nn.Module):
                  use_contexts2=True,
                  use_att=True,
                  use_embedding_feature=True,
-                 neighbor_window=3
+                 neighbor_window=3,
+                 rho=1.0
                  ):
         super(PNCEL, self).__init__()
 
@@ -54,6 +57,7 @@ class PNCEL(nn.Module):
         self._dropout_rate = dropout
         self._neighbor_window = neighbor_window
         self._gc_ln = gc_ln
+        self._rho = rho
 
         word_embeddings, entity_embeddings, sense_embeddings, mu_embeddings = initial_embeddings
         word_vocab_size, word_embedding_dim = word_embeddings.shape
@@ -246,11 +250,12 @@ class PNCEL(nn.Module):
         cand_emb_expand = cand_emb.unsqueeze(1).expand(batch_size * cand_num,
                                                        2*window*cand_num, self._dim)
         # (batch * cand) * (cand_num*window*2)
-        adj = self.cos(cand_emb_expand, neigh_cands)
+        adj = self.cos(cand_emb_expand, neigh_cands) * self._rho
         # add self connection
         margin_col = to_gpu(Variable(torch.ones(batch_size*cand_num, 1),
                                      requires_grad=False))
         # size: (batch * cand) * (cand_num*window*2+1)
+        # todo: 1. *0 = mlp, 2. memory
         adj = torch.cat((adj, margin_col), dim=1)
         # normalize
         adj = torch.clamp(adj, thred, 1)
@@ -269,18 +274,18 @@ class PNCEL(nn.Module):
 
 
     def getCandidateEmbedding(self, candidates, candidates_sense=None):
-        candidates = to_gpu(Variable(torch.from_numpy(candidates))).long()
+        candidates = to_gpu(Variable(torch.from_numpy(candidates), volatile=not self.training)).long()
         cand_entity_emb = self.run_embed(candidates, 1)
         cand_sense_emb = None
         cand_mu_emb = None
         if candidates_sense is not None and self._has_sense:
-            candidates_sense = to_gpu(Variable(torch.from_numpy(candidates_sense))).long()
+            candidates_sense = to_gpu(Variable(torch.from_numpy(candidates_sense), volatile=not self.training)).long()
             cand_sense_emb = self.run_embed(candidates_sense, 2)
             cand_mu_emb = self.run_embed(candidates_sense, 3)
         return cand_entity_emb, cand_sense_emb, cand_mu_emb
 
     def getTokenEmbedding(self, tokens, candidate_embeddings=None):
-        tokens = to_gpu(Variable(torch.from_numpy(tokens))).long()
+        tokens = to_gpu(Variable(torch.from_numpy(tokens), volatile=not self.training)).long()
 
         sense_emb = None
         mu_emb = None
@@ -325,7 +330,7 @@ class PNCEL(nn.Module):
         batch_size, cand_num, _ = base_feature.shape
         features = []
         # to gpu
-        base_feature = to_gpu(Variable(torch.from_numpy(base_feature))).float()
+        base_feature = to_gpu(Variable(torch.from_numpy(base_feature), requires_grad=False)).float()
         base_feature = base_feature.view(batch_size * cand_num, -1)
         features.append(base_feature)
 
@@ -403,7 +408,6 @@ class PNCEL(nn.Module):
 
         # reshape, batch_size * cand_num
         h = h.view(batch_size, -1)
-
         output = masked_softmax(h, mask=length_mask)
         return output
 
