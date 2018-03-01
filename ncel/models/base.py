@@ -467,7 +467,7 @@ def init_model(
     else:
         raise NotImplementedError
 
-    model = build_model(base_feature_dim, initial_embeddings, FLAGS)
+    model = build_model(base_feature_dim, initial_embeddings, FLAGS, logger)
 
     # Debug
     def set_debug(self):

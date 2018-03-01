@@ -10,10 +10,10 @@ from torch.nn.parameter import Parameter
 from torch.nn.init import kaiming_normal, uniform
 
 from ncel.utils.layers import Embed, to_gpu, SubGraphConvolution, LayerNormalization
-
+from ncel.utils.layers import UniInitializer, ZeroInitializer
 DEFAULT_SIM = 0.0
 
-def build_model(base_feature_dim, initial_embeddings, FLAGS):
+def build_model(base_feature_dim, initial_embeddings, FLAGS, logger):
     model_cls = PNCEL
     layers_dim = [2000]
     use_contexts2 = FLAGS.use_lr_context
@@ -22,6 +22,7 @@ def build_model(base_feature_dim, initial_embeddings, FLAGS):
     neighbor_window = 3
     bias = True
     rho = 0.0
+    sim_thred = 0.8
     return model_cls(
         base_feature_dim,
         initial_embeddings,
@@ -34,7 +35,9 @@ def build_model(base_feature_dim, initial_embeddings, FLAGS):
         use_att=use_att,
         use_embedding_feature=use_embedding_feature,
         neighbor_window=neighbor_window,
-        rho=rho
+        rho=rho,
+        sim_thred=sim_thred,
+        logger=logger
     )
 
 class PNCEL(nn.Module):
@@ -51,8 +54,11 @@ class PNCEL(nn.Module):
                  use_embedding_feature=True,
                  neighbor_window=3,
                  rho=1.0,
-                 initializer=kaiming_normal,
-                 bias_initializer=ZeroInitializer
+                 sim_thred=0.8,
+                 fc_initializer=kaiming_normal,
+                 classifier_initializer=UniInitializer,
+                 bias_initializer=ZeroInitializer,
+                 logger=None
                  ):
         super(PNCEL, self).__init__()
 
@@ -62,8 +68,12 @@ class PNCEL(nn.Module):
         self._neighbor_window = neighbor_window
         self._gc_ln = gc_ln
         self._rho = rho
-        self._w_initializer = kaiming_normal
-        self._bias_initializer = ZeroInitializer
+        self._fc_initializer = fc_initializer
+        self._classifier_initializer = classifier_initializer
+        self._bias_initializer = bias_initializer
+        self._logger = logger
+        self._thred = sim_thred
+        self._adj = None
 
         word_embeddings, entity_embeddings, sense_embeddings, mu_embeddings = initial_embeddings
         word_vocab_size, word_embedding_dim = word_embeddings.shape
@@ -221,26 +231,20 @@ class PNCEL(nn.Module):
         margin_col = to_gpu(Variable(torch.zeros(cand_num, dim), requires_grad=False))
         left_list = []
         # (batch * cand) * dim
-        tmp_neigh = self.leftNeighbor(emb, cand_num, margin_col, left_mask)
-        tmp_neigh_cand = self.getExpandNeighCandidates(tmp_neigh, batch_size, cand_num, dim)
-        left_list.append(tmp_neigh_cand)
+        left_list.append(self.leftNeighbor(emb, cand_num, margin_col, left_mask))
         for i in range(window - 1):
-            tmp_neigh = self.leftNeighbor(emb, cand_num, margin_col, left_mask)
-            tmp_neigh_cand = self.getExpandNeighCandidates(tmp_neigh, batch_size,
-                                                           cand_num, dim)
-            left_list.append(tmp_neigh_cand)
+            left_list.append(self.leftNeighbor(left_list[i], cand_num, margin_col, left_mask))
+        for i in range(window):
+            left_list[i] = self.getExpandNeighCandidates(left_list[i], batch_size, cand_num, dim)
         # (batch * cand) * (window*cand) * dim
         left_cands = torch.cat(left_list, dim=1)
 
         right_list = []
-        tmp_neigh = self.rightNeighbor(emb, cand_num, margin_col, right_mask)
-        tmp_neigh_cand = self.getExpandNeighCandidates(tmp_neigh, batch_size, cand_num, dim)
-        right_list.append(tmp_neigh_cand)
+        right_list.append(self.rightNeighbor(emb, cand_num, margin_col, right_mask))
         for i in range(window - 1):
-            tmp_neigh = self.rightNeighbor(emb, cand_num, margin_col, right_mask)
-            tmp_neigh_cand = self.getExpandNeighCandidates(tmp_neigh, batch_size,
-                                                           cand_num, dim)
-            right_list.append(tmp_neigh_cand)
+            right_list.append(self.rightNeighbor(right_list[i], cand_num, margin_col, right_mask))
+        for i in range(window):
+            right_list[i] = self.getExpandNeighCandidates(right_list[i], batch_size, cand_num, dim)
         # (batch * cand) * (window*cand) * dim
         right_cands = torch.cat(right_list, dim=1)
 
@@ -250,7 +254,7 @@ class PNCEL(nn.Module):
 
     # cand_emb: (batch * cand) * dim
     # adj: (batch_size * cand_num) * (2*window*cand_num+1)
-    def buildGraph(self, cand_emb, window, num_mentions, thred=0):
+    def buildGraph(self, cand_emb, window, num_mentions, thred=0.0):
         batch_size, cand_num = num_mentions.shape
         # (batch * cand) * (cand_num*window*2) * dim
         neigh_cands = self.getNeighCandidates(cand_emb, window, num_mentions)
@@ -259,15 +263,15 @@ class PNCEL(nn.Module):
         cand_emb_expand = cand_emb.unsqueeze(1).expand(batch_size * cand_num,
                                                        2*window*cand_num, self._dim)
         # (batch * cand) * (cand_num*window*2)
-        adj = self.cos(cand_emb_expand, neigh_cands) * self._rho
+        adj = torch.clamp(self.cos(cand_emb_expand, neigh_cands), thred, 1)
+        if thred > 0.0:
+            adj[adj<=thred]=0.0
         # add self connection
         margin_col = to_gpu(Variable(torch.ones(batch_size*cand_num, 1),
                                      requires_grad=False))
         # size: (batch * cand) * (cand_num*window*2+1)
-        # todo: 1. *0 = mlp, 2. memory
-        adj = torch.cat((adj, margin_col), dim=1)
+        adj = torch.cat((adj*self._rho, margin_col), dim=1)
         # normalize
-        adj = torch.clamp(adj, thred, 1)
         adj = F.normalize(adj, p=1, dim=1)
         return adj
 
@@ -387,10 +391,9 @@ class PNCEL(nn.Module):
         features.extend(neigh_ment_sims)
 
         # neighbor candidates
-        # (batch * cand) * (cand_num*window*2+1)
-        adj = self.buildGraph(cand_emb1, self._neighbor_window, num_mentions)
-        # (batch * cand) * 1 * (2*window*cand_num+1)
-        adj = adj.unsqueeze(1)
+        # (batch * cand) * 1 * (cand_num*window*2+1)
+        self._adj = self.buildGraph(cand_emb1, self._neighbor_window, num_mentions,
+                                    thred=self._thred).unsqueeze(1)
         # feature vec : (batch * cand) * feature_dim
         h = torch.cat(features, dim=1)
         if self._use_embedding_feature:
@@ -407,19 +410,19 @@ class PNCEL(nn.Module):
             h = h.matmul(w)
             # (batch_size * cand_num) * (2*window*cand_num+1) * f_dim
             h = self.getExpandFeature(h, self._neighbor_window, num_mentions)
-            h = torch.bmm(adj, h)
+            h = torch.bmm(self._adj, h).squeeze(1)
             if b is not None: h = h + b
-            h = F.relu(h)
             # h: (batch_size * cand_num) * feature_dim
             if length_mask is not None:
-                mask = length_mask.view(-1).unsqueeze(1).expand(batch_size*cand_num, dim)
+                mask = length_mask.view(-1).unsqueeze(1).expand(batch_size * cand_num, dim)
                 h = h * mask
+            h = F.relu(h)
         h = F.dropout(h, self._dropout_rate, training=self.training)
 
         h = h.matmul(self.gc_classifier_w)
         # (batch_size * cand_num) * (2*window*cand_num+1) * f_dim
         h = self.getExpandFeature(h, self._neighbor_window, num_mentions)
-        h = torch.bmm(adj, h)
+        h = torch.bmm(self._adj, h).squeeze(1)
         if self.gc_classifier_b is not None: h = h + self.gc_classifier_b
 
         # reshape, batch_size * cand_num
@@ -431,12 +434,47 @@ class PNCEL(nn.Module):
         for i in range(self._num_layers):
             w = getattr(self, 'w{}'.format(i))
             b = getattr(self, 'b{}'.format(i))
-            self._w_initializer(w)
+            self._fc_initializer(w)
             if b is not None:
                 self._bias_initializer(b)
-        self._w_initializer(self.gc_classifier_w)
+        self._classifier_initializer(self.gc_classifier_w)
         if self.gc_classifier_b is not None:
             self._bias_initializer(self.gc_classifier_b)
+
+    # e, num_mentions: batch * cand
+    def getGraphSample(self, e, num_mentions, entity_vocab, id2wiki_vocab, only_one=False):
+        ent_label_vocab = dict(
+            [(entity_vocab[id], id2wiki_vocab[id]) for id in entity_vocab if id in id2wiki_vocab])
+        ent_label_vocab[0] = 'PAD'
+        ent_label_vocab[1] = 'UNK'
+
+        batch_size, cand_num = e.shape
+        # graph, (batch * cand) * (cand_num*window*2+1)
+        adj = self._adj.data.squeeze()
+        # neighbors, (batch * cand) * (cand_num*window*2)
+        e_var = Variable(torch.from_numpy(e).view(-1).unsqueeze(1), requires_grad=False)
+        neighbors = self.getNeighCandidates(e_var, self._neighbor_window, num_mentions).data.squeeze()
+        c_idx = 0
+        docs = []
+        doc_edges = []
+        for i in range(batch_size):
+            for j in range(cand_num):
+                label = ent_label_vocab[e[i][j]]
+                # edges
+                edges = adj[c_idx]
+                nodes = neighbors[c_idx]
+                tmp_len = len(edges)-1
+                for k in range(tmp_len):
+                    if edges[k] > 0:
+                        n_label = ent_label_vocab[nodes[k]]
+                        doc_edges.append([label, n_label, edges[k]])
+                c_idx += 1
+                # doc
+                if num_mentions[i][j]==0:
+                    docs.append(doc_edges)
+                    if only_one : return docs
+                    del doc_edges[:]
+        return docs
 
 # length: batch_size
 def sequence_mask(sequence_length, max_length):
@@ -456,11 +494,3 @@ def masked_softmax(logits, mask=None):
         logits = logits * mask
     probs = F.softmax(logits, dim=1)
     return probs
-
-def ZeroInitializer(param):
-    shape = param.size()
-    init = np.zeros(shape).astype(np.float32)
-    param.data.set_(torch.from_numpy(init))
-
-def UniInitializer(param):
-    uniform(param, -0.005, 0.005)

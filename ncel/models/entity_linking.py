@@ -175,6 +175,13 @@ def train_loop(
                        contexts2=context2, candidates_sense=cids_sense,
                        num_mentions=num_mentions, length=num_candidates)
 
+        # log graph
+        _, entity_vocab, _, id2wiki_vocab = vocabulary
+        samples = model.getGraphSample(cids, num_mentions, entity_vocab, id2wiki_vocab, only_one=False)
+        for sample in samples:
+            logger.Log(";".join(["{}<-{}->{}".format(edge[0], edge[2], edge[1])
+                                 for edge in sample]))
+
         target = torch.from_numpy(y).long()
         # Calculate accuracy.
         batch_mentions, mention_correct, batch_docs, doc_acc_per_batch = \
