@@ -81,13 +81,13 @@ def evaluate(FLAGS, model, eval_set, log_entry,
 
         if FLAGS.write_eval_report and report_sample:
             batch_samples = print_samples(output.data.cpu().numpy(), vocabulary, dataset_batch, only_one=False)
+            if FLAGS.model_type in ["PNCEL"] :
+                # log graph
+                _, entity_vocab, _, id2wiki_vocab = vocabulary
+                docs_edges = model.getGraphSample(cids, num_mentions, entity_vocab, id2wiki_vocab, only_one=False)
+                for i, edges in enumerate(docs_edges):
+                    batch_samples[i] += edges
             reporter.save_batch(batch_samples)
-            # log graph
-            _, entity_vocab, _, id2wiki_vocab = vocabulary
-            samples = model.getGraphSample(cids, num_mentions, entity_vocab, id2wiki_vocab, only_one=False)
-            for sample in samples:
-                logger.Log(";".join(["{}<-{}->{}".format(edge[0], edge[2], edge[1])
-                                     for edge in sample]))
 
         # Print Progress
         progress_bar.step(i + 1, total=total_batches)

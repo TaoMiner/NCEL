@@ -21,7 +21,7 @@ def build_model(base_feature_dim, initial_embeddings, FLAGS, logger):
     use_embedding_feature = True
     neighbor_window = 3
     bias = True
-    rho = 0.0
+    rho = 0.2
     sim_thred = 0.8
     return model_cls(
         base_feature_dim,
@@ -98,8 +98,6 @@ class PNCEL(nn.Module):
                                   vectors=mu_embeddings, fine_tune=fine_tune_loaded_embeddings)
 
         self.embeds = [self.word_embed, self.entity_embed, self.sense_embed, self.mu_embed]
-
-        self.cos = nn.CosineSimilarity(dim=2, eps=1e-8)
 
         #
         self._use_embedding_feature = use_embedding_feature
@@ -263,7 +261,7 @@ class PNCEL(nn.Module):
         cand_emb_expand = cand_emb.unsqueeze(1).expand(batch_size * cand_num,
                                                        2*window*cand_num, self._dim)
         # (batch * cand) * (cand_num*window*2)
-        adj = torch.clamp(self.cos(cand_emb_expand, neigh_cands), thred, 1)
+        adj = torch.clamp(F.cosine_similarity(cand_emb_expand, neigh_cands, dim=2), thred, 1)
         if thred > 0.0:
             adj[adj<=thred]=0.0
         # add self connection
@@ -452,28 +450,35 @@ class PNCEL(nn.Module):
         # graph, (batch * cand) * (cand_num*window*2+1)
         adj = self._adj.data.squeeze()
         # neighbors, (batch * cand) * (cand_num*window*2)
-        e_var = Variable(torch.from_numpy(e).view(-1).unsqueeze(1), requires_grad=False)
+        e_var = to_gpu(Variable(torch.from_numpy(e).view(-1).unsqueeze(1), requires_grad=False).float())
         neighbors = self.getNeighCandidates(e_var, self._neighbor_window, num_mentions).data.squeeze()
-        c_idx = 0
+        c_idx = -1
         docs = []
         doc_edges = []
+        is_doc_end = False
         for i in range(batch_size):
             for j in range(cand_num):
+                c_idx += 1
+                if e[i][j] in [0, 1]: continue
                 label = ent_label_vocab[e[i][j]]
                 # edges
                 edges = adj[c_idx]
                 nodes = neighbors[c_idx]
                 tmp_len = len(edges)-1
                 for k in range(tmp_len):
-                    if edges[k] > 0:
+                    if edges[k] > 0 and nodes[k] not in [0, 1]:
                         n_label = ent_label_vocab[nodes[k]]
                         doc_edges.append([label, n_label, edges[k]])
-                c_idx += 1
                 # doc
                 if num_mentions[i][j]==0:
-                    docs.append(doc_edges)
-                    if only_one : return docs
-                    del doc_edges[:]
+                    is_doc_end = True
+            if is_doc_end:
+                is_doc_end = False
+                doc_line = "Graph: \n" + "\n".join(["{}<-{}->{}".format(edge[0], edge[2],
+                                   edge[1]) for edge in doc_edges]) + '\n'
+                docs.append(doc_line)
+                if only_one: return docs
+                del doc_edges[:]
         return docs
 
 # length: batch_size
