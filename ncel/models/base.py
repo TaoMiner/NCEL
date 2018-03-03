@@ -406,7 +406,8 @@ def get_flags():
     gflags.DEFINE_integer(
         "statistics_interval_steps",
         100,
-        "Log training set performance statistics at this interval.")
+        "Log training set performance statistics at this interval."
+        "better smaller than deque_length")
     gflags.DEFINE_integer(
         "eval_interval_steps",
         100,

@@ -55,7 +55,12 @@ def eval_stats(model, A, eval_data):
 
     doc_acc_per_batch = A.get('macro_acc')
     batch_docs = A.get('doc_batch')
-    eval_data.eval_document_accuracy = sum(doc_acc_per_batch) / float(len(batch_docs))
+    total_acc = 0.0
+    total_docs = 0
+    for i, dacc in enumerate(doc_acc_per_batch):
+        total_acc += dacc * batch_docs[i]
+        total_docs += batch_docs[i]
+    eval_data.eval_document_accuracy = total_acc / float(total_docs)
 
     time_metric = time_per_token(A.get('total_candidates'), A.get('total_time'))
     eval_data.time_per_token_seconds = time_metric

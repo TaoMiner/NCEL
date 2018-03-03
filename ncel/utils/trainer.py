@@ -15,6 +15,7 @@ def get_checkpoint_path(FLAGS, suffix=".ckpt", best=False):
         checkpoint_path += "_best"
     return checkpoint_path
 
+check_rho = 1.0
 class ModelTrainer(object):
     def __init__(self, model, logger, epoch_length, vocabulary, FLAGS):
         self.model = model
@@ -39,7 +40,6 @@ class ModelTrainer(object):
         self.eval_interval_steps = FLAGS.eval_interval_steps
 
         self.step = 0
-        self.best_dev_error = 1.0
         self.best_dev_step = 0
 
         # record best dev, test acc
@@ -66,17 +66,16 @@ class ModelTrainer(object):
             self.load(self.best_checkpoint_path, cpu=FLAGS.gpu < 0)
             self.logger.Log(
                 "Resuming at step: {} with best dev accuracy: {}".format(
-                    self.step, 1. - self.best_dev_error))
+                    self.step, self.best_dev_macc))
         elif os.path.isfile(self.standard_checkpoint_path):
             self.logger.Log("Found checkpoint, restoring.")
             self.load(self.standard_checkpoint_path, cpu=FLAGS.gpu < 0)
             self.logger.Log(
                 "Resuming at step: {} with best dev accuracy: {}".format(
-                    self.step, 1. - self.best_dev_error))
+                    self.step, self.best_dev_macc))
 
     def reset(self):
         self.step = 0
-        self.best_dev_error = 1.0
         self.best_dev_step = 0
 
         # record best dev, test acc
@@ -118,8 +117,7 @@ class ModelTrainer(object):
         # Track best dev error
         dev_acc = accs[0]
         dev_macc, dev_dacc = dev_acc
-        if (1 - dev_macc) < 0.99 * self.best_dev_error:
-            self.best_dev_error = 1 - dev_macc
+        if dev_macc > check_rho * self.best_dev_macc:
             self.best_dev_step = self.step
             if self.ckpt_on_best_dev_error and self.step > self.ckpt_step:
                 self.logger.Log(
@@ -150,7 +148,6 @@ class ModelTrainer(object):
         # Always sends Tensors to CPU.
         save_dict = {
             'step': self.step,
-            'best_dev_error': self.best_dev_error,
             'best_dev_step': self.best_dev_step,
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
