@@ -16,11 +16,13 @@ DEFAULT_SIM = 0.0
 def build_model(base_feature_dim, initial_embeddings, FLAGS, logger):
     model_cls = PNCELMLP
     mlp_layers_dim = [2000]
+    mlp_classes = 1
     gc_layers = [[1, 1, 1]]
     use_contexts2 = FLAGS.use_lr_context
     use_att = FLAGS.att
     use_embedding_feature = True
-    neighbor_window = 3
+    neighbor_ment_window = 3
+    neighbor_cand_window = 3
     bias = True
     rho = 0.2
     sim_thred = 0.8
@@ -31,6 +33,7 @@ def build_model(base_feature_dim, initial_embeddings, FLAGS, logger):
         base_feature_dim,
         initial_embeddings,
         mlp_layers_dim=mlp_layers_dim,
+        mlp_classes=mlp_classes,
         gc_layers=gc_layers,
         bias=bias,
         ln=FLAGS.mlp_ln,
@@ -39,7 +42,8 @@ def build_model(base_feature_dim, initial_embeddings, FLAGS, logger):
         use_contexts2=use_contexts2,
         use_att=use_att,
         use_embedding_feature=use_embedding_feature,
-        neighbor_window=neighbor_window,
+        neighbor_ment_window=neighbor_ment_window,
+        neighbor_cand_window=neighbor_cand_window,
         rho=rho,
         sim_thred=sim_thred,
         initializer=initializer,
@@ -52,6 +56,7 @@ class PNCELMLP(nn.Module):
                  base_dim,
                  initial_embeddings,
                  mlp_layers_dim=[],
+                 mlp_classes=1,
                  gc_layers=[[1,1,1]],
                  bias=True,
                  ln=False,
@@ -60,7 +65,8 @@ class PNCELMLP(nn.Module):
                  use_contexts2=True,
                  use_att=True,
                  use_embedding_feature=True,
-                 neighbor_window=3,
+                 neighbor_ment_window=3,
+                 neighbor_cand_window=3,
                  rho=1.0,
                  sim_thred=0.8,
                  initializer=kaiming_normal,
@@ -72,7 +78,8 @@ class PNCELMLP(nn.Module):
         self._use_contexts2 = use_contexts2
         self._use_att = use_att
         self._dropout_rate = dropout
-        self._neighbor_window = neighbor_window
+        self._neighbor_ment_window = neighbor_ment_window
+        self._neighbor_cand_window = neighbor_cand_window
         self._ln = ln
         self._rho = rho
         self._initializer = initializer
@@ -82,6 +89,7 @@ class PNCELMLP(nn.Module):
         self._adj = None
         self._gc_layers = gc_layers
         self._res_num = len(gc_layers)
+        self._mlp_classes = mlp_classes
 
         word_embeddings, entity_embeddings, sense_embeddings, mu_embeddings = initial_embeddings
         word_vocab_size, word_embedding_dim = word_embeddings.shape
@@ -115,13 +123,11 @@ class PNCELMLP(nn.Module):
             emb_num = 3 if self._use_contexts2 else 2
             self._feature_dim += emb_num * self._dim
 
-        mlp_hidden_dim = 1
-
-        self.mlp_classifier = MLPClassifier(self._feature_dim, mlp_hidden_dim, layers_dim=mlp_layers_dim,
+        self.mlp = MLPClassifier(self._feature_dim, self._mlp_classes, layers_dim=mlp_layers_dim,
                                             mlp_ln=self._ln, dropout=dropout)
 
         if self._res_num > 0:
-            features_dim = mlp_hidden_dim
+            features_dim = self._mlp_classes
             for i in range(self._res_num):
                 input_dim = features_dim
                 for j in range(len(self._gc_layers[i])):
@@ -393,16 +399,16 @@ class PNCELMLP(nn.Module):
 
         # neibor mention string similarity
         neigh_ment_sims = DEFAULT_SIM, DEFAULT_SIM, DEFAULT_SIM
-        if self._neighbor_window > 0 and num_mentions is not None:
+        if self._neighbor_ment_window > 0 and num_mentions is not None:
             # (batch * cand_num) * dim
             neigh_ment_embs = self.getNeighborMentionEmbeddings(ment_embs,
-                                self._neighbor_window, num_mentions)
+                                self._neighbor_ment_window, num_mentions)
             neigh_ment_sims = self.getCandidateSimilarity(neigh_ment_embs, candidate_embeddings)
         features.extend(neigh_ment_sims)
 
         # neighbor candidates
         # (batch * cand) * 1 * (cand_num*window*2+1)
-        self._adj = self.buildGraph(cand_emb1, self._neighbor_window, num_mentions,
+        self._adj = self.buildGraph(cand_emb1, self._neighbor_cand_window, num_mentions,
                                     thred=self._thred).unsqueeze(1)
         # feature vec : (batch * cand) * feature_dim
         f_vec = torch.cat(features, dim=1)
@@ -418,7 +424,8 @@ class PNCELMLP(nn.Module):
         gc_input = mlp_output
         if self._res_num > 0:
             # mask softmax (batch_size * cand_num) * 1
-            gc_input = masked_softmax(gc_input.view(batch_size, -1), mask=length_mask).view(-1).unsqueeze(1)
+            if self._mlp_classes == 1:
+                gc_input = masked_softmax(gc_input.view(batch_size, -1), mask=length_mask).view(-1).unsqueeze(1)
             for i in range(self._res_num):
                 h = gc_input
                 for j in range(len(self._gc_layers[i])):
@@ -427,7 +434,7 @@ class PNCELMLP(nn.Module):
                     d = getattr(self, 'd{}-{}'.format(i, j))
                     h = h.matmul(w)
                     # (batch_size * cand_num) * (2*window*cand_num+1) * 1
-                    h = self.getExpandFeature(h, self._neighbor_window, num_mentions)
+                    h = self.getExpandFeature(h, self._neighbor_cand_window, num_mentions)
                     h = torch.bmm(self._adj, h).squeeze(1)
                     if b is not None: h = h + b
                     # h: (batch_size * cand_num) * 1
@@ -473,7 +480,7 @@ class PNCELMLP(nn.Module):
         adj = self._adj.data.squeeze()
         # neighbors, (batch * cand) * (cand_num*window*2)
         e_var = to_gpu(Variable(torch.from_numpy(e).view(-1).unsqueeze(1), requires_grad=False).float())
-        neighbors = self.getNeighCandidates(e_var, self._neighbor_window, num_mentions).data.squeeze()
+        neighbors = self.getNeighCandidates(e_var, self._neighbor_cand_window, num_mentions).data.squeeze()
         c_idx = -1
         docs = []
         doc_edges = []

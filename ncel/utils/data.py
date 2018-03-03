@@ -721,8 +721,8 @@ def MakeTrainingIterator(
             # Put indices into buckets based on candidate size.
             keys = []
             for i in split:
-                n_candidates = sources[i].n_candidates
-                keys.append((i, n_candidates))
+                n_mentions = len(sources[i].mentions)
+                keys.append((i, n_mentions))
             keys = sorted(keys, key=lambda __key: __key[1])
 
             # Group indices from buckets into batches, so that
