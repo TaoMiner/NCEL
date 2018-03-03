@@ -176,7 +176,7 @@ def train_loop(
         # Reset cached gradients.
         trainer.optimizer_zero_grad()
 
-        # Run model. output: batch_size * max_cand_num
+        # Run model. output: batch_size * cand_num
         output = model(context1, base, cids, m_strs,
                        contexts2=context2, candidates_sense=cids_sense,
                        num_mentions=num_mentions, length=num_candidates)

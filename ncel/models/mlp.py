@@ -89,6 +89,7 @@ class MLPC(nn.Module):
 
         self.mlp_classifier = MLPClassifier(self._feature_dim, 1, layers_dim=layers_dim,
                                             mlp_ln=mlp_ln, dropout=dropout)
+        self.reset_parameters()
 
     # types: index of [word,entity,sense,mu]
     def run_embed(self, x, type):
@@ -274,9 +275,7 @@ class MLPC(nn.Module):
         return output
 
     def reset_parameters(self):
-        if self.mlp_layer is not None:
-            self.mlp_layer.reset_parameters()
-        self.classifier.reset_parameters()
+        self.mlp_classifier.reset_parameters()
 
 
 # length: batch_size
