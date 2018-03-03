@@ -78,12 +78,13 @@ class CoNLLIterator:
             for mention in doc.mentions:
                 yield mention
 
-def load_data(text_path=None, mention_file=None, kbp_id2wikiid_file=None, genre=0,
+def load_data(text_path=None, mention_file=None, supplement=None,
               include_unresolved=False, lowercase=False, wiki_entity_file=None):
     assert not isinstance(mention_file, type(None)), "conll data requires mention file!"
     print("Loading", mention_file)
+    if supplement is None or supplement not in [0, 1, 2]: supplement=0
     docs = []
-    doc_iter = CoNLLIterator(mention_file, genre=genre, include_unresolved = include_unresolved, lowercase=lowercase)
+    doc_iter = CoNLLIterator(mention_file, genre=supplement, include_unresolved = include_unresolved, lowercase=lowercase)
     for doc in doc_iter.documents():
         docs.append(doc)
     return docs

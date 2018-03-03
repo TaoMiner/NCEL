@@ -163,8 +163,8 @@ class NcelDataLoader(xmlHandler):
             for mention in doc.mentions:
                 yield mention
 
-def load_data(text_path=None, mention_file=None, kbp_id2wikiid_file=None,
-              genre=0, include_unresolved=False, lowercase=False,
+def load_data(text_path=None, mention_file=None, supplement=None,
+              include_unresolved=False, lowercase=False,
               wiki_entity_file=None):
     assert not isinstance(text_path, type(None)) and not isinstance(mention_file, type(None)),\
         "Ncel data requires raw text path and mention file!"

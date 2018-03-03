@@ -174,14 +174,14 @@ class KbpDataLoader(xmlHandler):
             for mention in doc.mentions:
                 yield mention
 
-def load_data(text_path=None, mention_file=None, kbp_id2wikiid_file=None, genre=0,
+def load_data(text_path=None, mention_file=None, supplement=None,
               include_unresolved=False, lowercase=False, wiki_entity_file=None):
     assert not isinstance(text_path, type(None)) and not isinstance(text_path, type(None)) \
-        and not isinstance(kbp_id2wikiid_file, type(None)), "kbp data requires raw text path, mention file and id2wiki file!"
+        and not isinstance(supplement, type(None)), "kbp data requires raw text path, mention file and id2wiki file!"
     print("Loading", text_path)
     wiki_map = loadWikiVocab(wiki_entity_file)
     docs = []
-    doc_iter = KbpDataLoader(text_path, mention_file, kbp_id2wikiid_file,
+    doc_iter = KbpDataLoader(text_path, mention_file, supplement,
                              include_unresolved=include_unresolved, lowercase=lowercase,
                              wiki_map=wiki_map)
     for doc in doc_iter.documents():
@@ -192,7 +192,7 @@ if __name__ == "__main__":
     # Demo:
     docs = load_data(text_path='/home/caoyx/data/kbp/kbp_cl/kbp16/eng/eval/nw',
                      mention_file='/home/caoyx/data/kbp/kbp_cl/kbp16/eng/eval/kbp16_nw_gold.xml',
-                     kbp_id2wikiid_file='/home/caoyx/data/kbp/kbp_cl/id.key2015')
+                     supplement='/home/caoyx/data/kbp/kbp_cl/id.key2015')
     print(docs[0].name)
     for m in docs[0].mentions:
         print("{0}, {1}, {2}".format(m._mention_start, m._mention_end, m._gold_ent_id))

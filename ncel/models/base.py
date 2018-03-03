@@ -81,19 +81,20 @@ def unwrapDataset(data_tuples):
         items = dataset.split(":")
         assert len(items)==4 and len(items[0])>0, "Error: unmatched data tuples!"
         data_type = items[0]
-        genre = int(items[1]) if len(items[1])>0 else None
+        supplement = items[1] if len(items[1])>0 else None
         text_path = items[2] if len(items[2]) > 0 else None
         mention_file = items[3] if len(items[3]) > 0 else None
-        unwraped_data_tuples.append([data_type, genre, text_path, mention_file])
+        unwraped_data_tuples.append([data_type, supplement, text_path, mention_file])
     return unwraped_data_tuples
 
-def extractRawData(data_type, text_path, mention_file, genre, FLAGS):
+def extractRawData(data_type, text_path, mention_file, supplement, FLAGS):
     assert data_type in DATA_TYPE, "Wrong input data types!"
     data_manager = get_data_manager(data_type)
+    if data_type in ["conll", "ncelwiki"]:
+        supplement = int(supplement)
     raw_data = data_manager.load_data(text_path=text_path, mention_file=mention_file,
-                kbp_id2wikiid_file=FLAGS.kbp2wikiId_file, genre=genre,
-                include_unresolved=FLAGS.include_unresolved, lowercase=FLAGS.lowercase,
-                wiki_entity_file=FLAGS.wiki_entity_vocab)
+                 supplement=supplement, include_unresolved=FLAGS.include_unresolved,
+                lowercase=FLAGS.lowercase, wiki_entity_file=FLAGS.wiki_entity_vocab)
 
     return raw_data
 
@@ -317,10 +318,10 @@ def get_flags():
 
     # Data settings.
     gflags.DEFINE_string("training_data", None,
-                         "'type:genre:text_path:mention_file'. text_path or mention file may empty."
+                         "'type:supplement:text_path:mention_file'. text_path or mention file may empty."
                          " use ',' to separate multiple training data.")
     gflags.DEFINE_string("eval_data", None,
-                         "'type:genre:text_path:mention_file', text_path or mention file may empty."
+                         "'type:supplement:text_path:mention_file', text_path or mention file may empty."
                          " use ',' to separate multiple eval data.")
 
     gflags.DEFINE_string(
@@ -347,10 +348,6 @@ def get_flags():
     gflags.DEFINE_integer("topn_candidate", 30, "Use all candidates if set 0.")
     gflags.DEFINE_boolean("use_lr_context", True, "Use left and right context.")
     gflags.DEFINE_boolean("split_by_sent", True, "extract context by sent.")
-
-    # KBP data
-    gflags.DEFINE_string(
-        "kbp2wikiId_file", None, "Each line: 'kbp_ent_id','\t','wiki_id'.")
 
     # Optimization settings.
     gflags.DEFINE_enum("optimizer_type", "Adam", ["Adam", "SGD"], "")

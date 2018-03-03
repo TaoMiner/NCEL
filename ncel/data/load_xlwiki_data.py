@@ -147,13 +147,14 @@ class XlwikiDataLoader():
                 doc.mentions[i].setStrAndLength()
             yield doc
 
-def load_data(text_path=None, mention_file=None, kbp_id2wikiid_file=None, genre=0,
+def load_data(text_path=None, mention_file=None, supplement=None,
               include_unresolved=False, lowercase=False, wiki_entity_file=None):
     assert not isinstance(text_path, type(None)), "xlwiki data requires raw path!"
     print("Loading", text_path)
     wiki_map = loadWikiVocab(wiki_entity_file)
+    if supplement is None or supplement not in [0, 1, 2]: supplement=2
     docs = []
-    doc_iter = XlwikiDataLoader(text_path, genre=genre,
+    doc_iter = XlwikiDataLoader(text_path, genre=supplement,
                                 lowercase=lowercase, wiki_map=wiki_map)
     for doc in doc_iter.documents():
         docs.append(doc)
