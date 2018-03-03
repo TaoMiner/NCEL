@@ -68,7 +68,7 @@ def evaluate(FLAGS, model, eval_set, log_entry,
         # Calculate accuracy.
         target = torch.from_numpy(y).long()
         batch_mentions, mention_correct, batch_docs, doc_acc_per_batch =\
-            ComputeAccuracy(output, target, dataset_batch)
+            ComputeAccuracy(output.data, target, dataset_batch)
 
         A.add('mention_correct', mention_correct)
         A.add('mention_batch', batch_mentions)
@@ -133,8 +133,7 @@ def train_loop(
         training_data_iter,
         eval_iterators,
         logger,
-        vocabulary,
-        final_A):
+        vocabulary):
     # Accumulate useful statistics.
     A = Accumulator(maxlen=FLAGS.deque_length)
 
@@ -184,7 +183,7 @@ def train_loop(
         target = torch.from_numpy(y).long()
         # Calculate accuracy.
         batch_mentions, mention_correct, batch_docs, doc_acc_per_batch = \
-            ComputeAccuracy(output, target, doc_batch)
+            ComputeAccuracy(output.data, target, doc_batch)
 
         # Calculate loss.
         loss = nn.CrossEntropyLoss()(output, to_gpu(Variable(target, volatile=False)))
@@ -222,13 +221,12 @@ def train_loop(
         if trainer.step > 0 and trainer.step % FLAGS.eval_interval_steps == 0:
             should_log = True
             # note: at most tow eval set due to training recording best
-            test_acc = None
+            accs = []
             for index, eval_set in enumerate(eval_iterators):
-                acc = evaluate(
-                    FLAGS, model, eval_set, log_entry, logger, show_sample=FLAGS.show_sample, vocabulary=vocabulary, eval_index=index)
-                if index == 0: dev_acc = acc
-                else: test_acc = acc
-            trainer.new_accuracy(dev_acc, test_acc=test_acc)
+                accs.append(evaluate(FLAGS, model, eval_set, log_entry, logger,
+                               show_sample=FLAGS.show_sample, vocabulary=vocabulary,
+                               eval_index=index))
+            trainer.new_accuracy(accs)
             progress_bar.reset()
 
         if trainer.step > FLAGS.ckpt_step and trainer.step % FLAGS.ckpt_interval_steps == 0:
@@ -240,11 +238,7 @@ def train_loop(
 
         progress_bar.step(i=(trainer.step % FLAGS.statistics_interval_steps) + 1,
                           total=FLAGS.statistics_interval_steps)
-    # record train acc and eval acc
-    final_A.add('dev_macc', trainer.best_dev_macc)
-    final_A.add('dev_dacc', trainer.best_dev_dacc)
-    final_A.add('test_macc', trainer.best_test_macc)
-    final_A.add('test_dacc', trainer.best_test_dacc)
+    finalStats(trainer, logger)
 
 def run(only_forward=False):
     # todo : revise create_log_formatter
@@ -291,7 +285,6 @@ def run(only_forward=False):
             print(log_entry)
             logger.LogEntry(log_entry)
     else:
-        final_A = Accumulator(maxlen=FLAGS.deque_length)
         train_loop(
             FLAGS,
             model,
@@ -299,9 +292,7 @@ def run(only_forward=False):
             training_data_iter,
             eval_iterators,
             logger,
-            vocabulary,
-            final_A)
-        finalStats(final_A, logger)
+            vocabulary)
 
 if __name__ == '__main__':
     get_flags()

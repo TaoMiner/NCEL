@@ -193,39 +193,130 @@ class GraphConvolution(Module):
 
 class SubGraphConvolution(Module):
     """
-    Simple GCN layer, similar to https://arxiv.org/abs/1609.02907
+    partial GCN layer, similar to https://arxiv.org/abs/1609.02907
     """
-    def __init__(self, in_features, out_features, bias=True):
+    def __init__(self, in_features, layer_dims=[100], bias=True,
+                 initializer=UniInitializer, bias_initializer=UniInitializer):
         super(SubGraphConvolution, self).__init__()
-        self.in_features = in_features
-        self.out_features = out_features
-        self.weight = Parameter(torch.Tensor(in_features, out_features))
-        if bias:
-            self.bias = Parameter(torch.Tensor(out_features))
-        else:
-            self.register_parameter('bias', None)
+        self._layer_dims = layer_dims
+        self._initializer = initializer
+        self._bias_initializer = bias_initializer
+        self._in_features = in_features
+
+        features_dim = self._in_features
+        for i, dim in enumerate(self._layer_dims):
+            hidden_dim = dim
+            setattr(self, 'w{}'.format(i), Parameter(torch.Tensor(features_dim, hidden_dim)))
+            setattr(self, 'b{}'.format(i), Parameter(torch.Tensor(hidden_dim)) if bias else None)
+            features_dim = hidden_dim
         self.reset_parameters()
 
     def reset_parameters(self):
-        stdv = 1. / math.sqrt(self.weight.size(1))
-        self.weight.data.uniform_(-stdv, stdv)
-        if self.bias is not None:
-            self.bias.data.uniform_(-stdv, stdv)
+        for i in range(len(self._layer_dims)):
+            lw = getattr(self, 'w{}'.format(i))
+            lb = getattr(self, 'b{}'.format(i))
+            self._initializer(lw)
+            self._bias_initializer(lb)
 
-    # input: (batch_size * node_num) * neighbors * in_features
-    # adj : (batch_size * node_num) * 1 * neighbors
-    def forward(self, input, adj):
-        support = input.matmul(self.weight)
-        output = torch.bmm(adj, support).squeeze(1)
+    def leftNeighbor(self, emb, mv_steps, margin_col, mask):
+        left_neigh_emb = torch.cat([margin_col, emb[:-mv_steps, :]], dim=0)
+        left_neigh_emb = left_neigh_emb * mask
+        return left_neigh_emb
 
-        if self.bias is not None:
-            output =  output + self.bias
-        return output
+    def rightNeighbor(self, emb, mv_steps, margin_col, mask):
+        right_neigh_emb = torch.cat([emb[mv_steps:, :], margin_col], dim=0)
+        right_neigh_emb = right_neigh_emb * mask
+        return right_neigh_emb
+
+    def getNeighborMask(self, num_mentions, dim):
+        batch_size, cand_num = num_mentions.shape
+        # batch * cand_num
+        margin_col = to_gpu(Variable(torch.zeros(1, cand_num), requires_grad=False))
+
+        right_mask = to_gpu(Variable(torch.from_numpy(num_mentions), requires_grad=False)).float()
+        left_mask = torch.cat([margin_col, right_mask[:-1, :]], dim=0)
+
+        # (batch * cand_num) * dim
+        right_mask_expand = right_mask.view(-1).unsqueeze(1).expand(batch_size * cand_num, dim)
+        left_mask_expand = left_mask.view(-1).unsqueeze(1).expand(batch_size * cand_num, dim)
+        return left_mask_expand, right_mask_expand
+
+    def getExpandNeighCandidates(self, neigh_emb, batch_size, cand_num, dim):
+        tmp_neigh_cand = neigh_emb.view(batch_size, cand_num, dim)
+        tmp_neigh_cand = tmp_neigh_cand.unsqueeze(1).expand(batch_size, cand_num,
+                                                            cand_num, dim)
+        # (batch * cand) * cand * dim
+        tmp_neigh_cand = tmp_neigh_cand.contiguous().view(batch_size * cand_num, cand_num, dim)
+        return tmp_neigh_cand
+
+    def getNeighCandidates(self, emb, window, graph_boundry):
+        batch_size, cand_num = graph_boundry.shape
+        _, dim = emb.size()
+        left_mask, right_mask = self.getNeighborMask(graph_boundry, dim)
+        margin_col = to_gpu(Variable(torch.zeros(cand_num, dim), requires_grad=False))
+        left_list = []
+        # (batch * cand) * dim
+        left_list.append(self.leftNeighbor(emb, cand_num, margin_col, left_mask))
+        for i in range(window - 1):
+            left_list.append(self.leftNeighbor(left_list[i], cand_num, margin_col, left_mask))
+        for i in range(window):
+            left_list[i] = self.getExpandNeighCandidates(left_list[i], batch_size, cand_num, dim)
+        # (batch * cand) * (window*cand) * dim
+        left_cands = torch.cat(left_list, dim=1)
+
+        right_list = []
+        right_list.append(self.rightNeighbor(emb, cand_num, margin_col, right_mask))
+        for i in range(window - 1):
+            right_list.append(self.rightNeighbor(right_list[i], cand_num, margin_col, right_mask))
+        for i in range(window):
+            right_list[i] = self.getExpandNeighCandidates(right_list[i], batch_size, cand_num, dim)
+        # (batch * cand) * (window*cand) * dim
+        right_cands = torch.cat(right_list, dim=1)
+
+        # (batch * cand) * (cand_num*window*2) * dim
+        neigh_cands = torch.cat((left_cands, right_cands), dim=1)
+        return neigh_cands
+
+    # f: (batch * group) * dim
+    # gf_neighbors: (batch * group) * (2*group*window+1) * dim
+    def getExpandFeature(self, f, window, graph_boundry):
+        _, f_dim = f.size()
+        # (batch * group) * (2*group*window) * dim
+        gf_neighbors = self.getNeighCandidates(f, window, graph_boundry)
+        # (batch * group) * (2*group*window+1) * dim
+        gf_neighbors = torch.cat((gf_neighbors, f.unsqueeze(1)), dim=1)
+        return gf_neighbors
+
+    # x: batch * group * in_features
+    # adj : batch * group * (2*group*window+1), self connection
+    # mask : batch * group
+    # graph_boundry : numpy, batch * group, 0 indicates the last group in the graph, otherwise 1
+    def forward(self, x, adj, graph_boundry, mask=None):
+        batch_size, group_size, neighbor_size = adj.size()
+        # todo: more flexible for adj neighbors
+        adj = adj.view(batch_size*group_size, neighbor_size).unsqueeze(1)
+        window = (neighbor_size-1)/group_size/2
+
+        h = x.view(batch_size*group_size, -1)
+
+        for i, dim in enumerate(self._layer_dims):
+            w = getattr(self, 'w{}'.format(i))
+            b = getattr(self, 'b{}'.format(i))
+            h = h.matmul(w)
+            # (batch * group) * (2*group*window+1) * dim
+            h = self.getExpandFeature(h, window, graph_boundry)
+            h = torch.bmm(adj, h).squeeze(1)
+            if b is not None: h = h + b
+            # h: batch * 1
+            if mask is not None:
+                mask = mask.view(-1).unsqueeze(1).expand(batch_size*group_size, dim)
+                h = h * mask
+            h = F.relu(h)
+        return h
 
     def __repr__(self):
         return self.__class__.__name__ + ' (' \
-               + str(self.in_features) + ' -> ' \
-               + str(self.out_features) + ')'
+               + str(self._in_features) + ' -> '.join([str(d) for d in self._layer_dims]) + ')'
 
 class MLPClassifier(nn.Module):
     def __init__(self,

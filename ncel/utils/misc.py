@@ -65,14 +65,14 @@ def recursively_set_device(inp, gpu):
             inp = inp.cpu()
     return inp
 
-# batch_size * node_num, output
-# batch_size , y
+# output: batch_size * cand_num
+# y: batch_size
 def ComputeAccuracy(output, y, docs, include_unresolved=False):
     total_mentions, max_cand_num = output.size()
     batch_docs = len(docs)
 
     # get the index of the max log-probability, batch_size
-    pred = output.data.max(1, keepdim=False)[1].cpu()
+    pred = output.max(1, keepdim=False)[1].cpu()
     # batch_size
     mention_correct = pred.eq(y)
     doc_acc = 0.0

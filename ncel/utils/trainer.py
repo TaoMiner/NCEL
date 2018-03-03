@@ -41,8 +41,7 @@ class ModelTrainer(object):
         # record best dev, test acc
         self.best_dev_macc = 0
         self.best_dev_dacc = 0
-        self.best_test_macc = 0
-        self.best_test_dacc = 0
+        self.best_test_accs = []
 
         # GPU support.
         self.gpu = FLAGS.gpu
@@ -79,8 +78,7 @@ class ModelTrainer(object):
         # record best dev, test acc
         self.best_dev_macc = 0
         self.best_dev_dacc = 0
-        self.best_test_macc = 0
-        self.best_test_dacc = 0
+        self.best_test_accs = []
 
     def optimizer_reset(self, learning_rate):
         self.learning_rate = learning_rate
@@ -112,11 +110,10 @@ class ModelTrainer(object):
         if self.sparse_optimizer is not None:
             self.sparse_optimizer.zero_grad()
 
-    def new_accuracy(self, dev_acc, test_acc=None):
+    def new_accuracy(self, accs):
         # Track best dev error
+        dev_acc = accs[0]
         dev_macc, dev_dacc = dev_acc
-        if test_acc is not None:
-            test_macc, test_dacc = test_acc
         if (1 - dev_macc) < 0.99 * self.best_dev_error:
             self.best_dev_error = 1 - dev_macc
             self.best_dev_step = self.step
@@ -127,9 +124,8 @@ class ModelTrainer(object):
                 self.save(self.best_checkpoint_path)
             self.best_dev_macc = dev_macc
             self.best_dev_dacc = dev_dacc
-            if test_acc is not None:
-                self.best_test_macc = test_macc
-                self.best_test_dacc = test_dacc
+            if len(accs) > 1:
+                self.best_test_accs = accs[1:]
 
         # Learning rate decay
         if self.learning_rate_decay_when_no_progress != 1.0:

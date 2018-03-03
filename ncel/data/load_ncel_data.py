@@ -5,7 +5,7 @@ from ncel.utils.misc import loadWikiVocab
 import os
 import re
 
-MAX_DOCS = 40000
+MAX_DOCS = 50000
 
 def _NcelFileToDocIterator(fpath):
     files = os.listdir(fpath)

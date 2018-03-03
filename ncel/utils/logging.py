@@ -29,13 +29,12 @@ class InspectModel(object):
 def inspect(model):
     return InspectModel(model)
 
-def finalStats(final_A, logger):
-    # todo: average total candidates and mentions docs,time
-    # time_metric = time_per_token(final_A.get('total_candidates'), A.get('total_time'))
-    logger.Log("dev best:\n macc:{}, dacc:{}.".format(
-                                    final_A.get_avg('dev_macc'), final_A.get_avg('dev_dacc')))
-    logger.Log("test best:\n macc:{}, dacc:{}.".format(
-                                    final_A.get_avg('test_macc'), final_A.get_avg('test_dacc')))
+def finalStats(trainer, logger):
+    logger.Log("dev best:\n macc:{}, dacc:{}.".format(trainer.best_dev_macc,
+                                                      trainer.best_dev_dacc))
+    for i, acc in enumerate(trainer.best_test_accs):
+        best_test_macc, best_test_dacc = acc
+        logger.Log("test {} best:\n macc:{}, dacc:{}.".format(i, best_test_macc, best_test_dacc))
 
 def stats(model, trainer, A, log_entry):
     time_metric = time_per_token(A.get('total_candidates'), A.get('total_time'))

@@ -18,6 +18,7 @@ from ncel.utils.misc import loadWikiVocab, loadRedirectVocab, loadStopWords
 import ncel.models.ncel as ncel
 import ncel.models.pncel as pncel
 import ncel.models.pncelmlp as pncelmlp
+import ncel.models.subncel as subncel
 import ncel.models.mlp as mlp
 
 from functools import reduce
@@ -384,6 +385,7 @@ def get_flags():
                         "NCEL",
                         "PNCEL",
                         "PNCELMLP",
+                        "SUBNCEL",
                         "MLP"], "")
     gflags.DEFINE_boolean("str_sim", True, ".")
     gflags.DEFINE_boolean("prior", True, ".")
@@ -468,6 +470,8 @@ def init_model(
         build_model = pncel.build_model
     elif FLAGS.model_type == "PNCELMLP":
         build_model = pncelmlp.build_model
+    elif FLAGS.model_type == "SUBNCEL":
+        build_model = subncel.build_model
     else:
         raise NotImplementedError
 

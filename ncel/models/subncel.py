@@ -6,17 +6,15 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import torch.nn.functional as F
-from torch.nn.parameter import Parameter
-from torch.nn.init import kaiming_normal, uniform
 
-from ncel.utils.layers import Embed, to_gpu, MLPClassifier, Linear
-from ncel.utils.layers import UniInitializer, ZeroInitializer
+from ncel.utils.layers import Embed, to_gpu, MLPClassifier, Linear, SubGraphConvolution
+from ncel.utils.layers import UniInitializer
 DEFAULT_SIM = 0.0
 
 def build_model(base_feature_dim, initial_embeddings, FLAGS, logger):
-    model_cls = PNCELMLP
-    mlp_layers_dim = [2000]
-    mlp_classes = 1
+    model_cls = SUBNCEL
+    # todo: mlp layer must lager than 1
+    mlp_layers_dim = [2000, 1]
     gc_layers = [[1, 1, 1]]
     use_contexts2 = FLAGS.use_lr_context
     use_att = FLAGS.att
@@ -26,14 +24,10 @@ def build_model(base_feature_dim, initial_embeddings, FLAGS, logger):
     bias = True
     rho = 0.2
     sim_thred = 0.8
-    # initializer = UniInitializer
-    initializer = kaiming_normal
-    bias_initializer = ZeroInitializer
     return model_cls(
         base_feature_dim,
         initial_embeddings,
         mlp_layers_dim=mlp_layers_dim,
-        mlp_classes=mlp_classes,
         gc_layers=gc_layers,
         bias=bias,
         ln=FLAGS.mlp_ln,
@@ -46,17 +40,14 @@ def build_model(base_feature_dim, initial_embeddings, FLAGS, logger):
         neighbor_cand_window=neighbor_cand_window,
         rho=rho,
         sim_thred=sim_thred,
-        initializer=initializer,
-        bias_initializer=bias_initializer,
         logger=logger
     )
 
-class PNCELMLP(nn.Module):
+class SUBNCEL(nn.Module):
     def __init__(self,
                  base_dim,
                  initial_embeddings,
                  mlp_layers_dim=[],
-                 mlp_classes=1,
                  gc_layers=[[1,1,1]],
                  bias=True,
                  ln=False,
@@ -69,11 +60,9 @@ class PNCELMLP(nn.Module):
                  neighbor_cand_window=3,
                  rho=1.0,
                  sim_thred=0.8,
-                 initializer=kaiming_normal,
-                 bias_initializer=ZeroInitializer,
                  logger=None
                  ):
-        super(PNCELMLP, self).__init__()
+        super(SUBNCEL, self).__init__()
 
         self._use_contexts2 = use_contexts2
         self._use_att = use_att
@@ -82,14 +71,12 @@ class PNCELMLP(nn.Module):
         self._neighbor_cand_window = neighbor_cand_window
         self._ln = ln
         self._rho = rho
-        self._initializer = initializer
-        self._bias_initializer = bias_initializer
         self._logger = logger
         self._thred = sim_thred
         self._adj = None
         self._gc_layers = gc_layers
         self._res_num = len(gc_layers)
-        self._mlp_classes = mlp_classes
+        self._mlp_classes = mlp_layers_dim[-1]
 
         word_embeddings, entity_embeddings, sense_embeddings, mu_embeddings = initial_embeddings
         word_vocab_size, word_embedding_dim = word_embeddings.shape
@@ -123,21 +110,21 @@ class PNCELMLP(nn.Module):
             emb_num = 3 if self._use_contexts2 else 2
             self._feature_dim += emb_num * self._dim
 
-        self.mlp_classifier = MLPClassifier(self._feature_dim, self._mlp_classes, layers_dim=mlp_layers_dim,
+        self.mlp_classifier = MLPClassifier(self._feature_dim, self._mlp_classes, layers_dim=mlp_layers_dim[:-1],
                                             mlp_ln=self._ln, dropout=dropout)
 
+        features_dim = self._mlp_classes
         if self._res_num > 0:
-            features_dim = self._mlp_classes
             for i in range(self._res_num):
                 input_dim = features_dim
-                for j in range(len(self._gc_layers[i])):
-                    hidden_dim = self._gc_layers[i][j]
-                    setattr(self, 'w{}-{}'.format(i, j), Parameter(torch.Tensor(features_dim, hidden_dim)))
-                    setattr(self, 'b{}-{}'.format(i, j), Parameter(torch.Tensor(hidden_dim)) if bias else None)
-                    setattr(self, 'd{}-{}'.format(i, j), hidden_dim)
-                    features_dim = hidden_dim
+                setattr(self, 'l{}'.format(i), SubGraphConvolution(features_dim, layer_dims=self._gc_layers[i], bias=True))
+                features_dim = self._gc_layers[i][-1]
                 # skip connection
                 setattr(self, 'sk{}'.format(i), Linear()(input_dim, features_dim) if input_dim != features_dim else None)
+
+        self.classifier = None
+        if features_dim!= 1:
+            self.classifier = Linear(initializer=UniInitializer)(features_dim, 1)
 
         self.reset_parameters()
 
@@ -301,7 +288,6 @@ class PNCELMLP(nn.Module):
         gf_neighbors = torch.cat((gf_neighbors, f.unsqueeze(1)), dim=1)
         return gf_neighbors
 
-
     def getCandidateEmbedding(self, candidates, candidates_sense=None):
         candidates = to_gpu(Variable(torch.from_numpy(candidates), volatile=not self.training)).long()
         cand_entity_emb = self.run_embed(candidates, 1)
@@ -407,9 +393,9 @@ class PNCELMLP(nn.Module):
         features.extend(neigh_ment_sims)
 
         # neighbor candidates
-        # (batch * cand) * 1 * (cand_num*window*2+1)
+        # (batch * cand) * (cand_num*window*2+1)
         self._adj = self.buildGraph(cand_emb1, self._neighbor_cand_window, num_mentions,
-                                    thred=self._thred).unsqueeze(1)
+                                    thred=self._thred).view(batch_size, cand_num, -1)
         # feature vec : (batch * cand) * feature_dim
         f_vec = torch.cat(features, dim=1)
         if self._use_embedding_feature:
@@ -419,29 +405,17 @@ class PNCELMLP(nn.Module):
                 f_vec = torch.cat((f_vec, con2_emb_cand1), dim=1)
 
         # mlp classify
-        mlp_output = self.mlp_classifier(f_vec, length=length_mask.view(-1))
+        gc_input = self.mlp_classifier(f_vec, length=length_mask.view(-1))
 
-        gc_input = mlp_output
         if self._res_num > 0:
-            # mask softmax (batch_size * cand_num) * 1
+            # (batch_size * cand_num) * dim
             if self._mlp_classes == 1:
-                gc_input = masked_softmax(gc_input.view(batch_size, -1), mask=length_mask).view(-1).unsqueeze(1)
+                gc_input = masked_softmax(gc_input.view(batch_size, -1), mask=length_mask).unsqueeze(2)
+            else:
+                gc_input = gc_input.view(batch_size, cand_num, -1)
             for i in range(self._res_num):
-                h = gc_input
-                for j in range(len(self._gc_layers[i])):
-                    w = getattr(self, 'w{}-{}'.format(i, j))
-                    b = getattr(self, 'b{}-{}'.format(i, j))
-                    d = getattr(self, 'd{}-{}'.format(i, j))
-                    h = h.matmul(w)
-                    # (batch_size * cand_num) * (2*window*cand_num+1) * 1
-                    h = self.getExpandFeature(h, self._neighbor_cand_window, num_mentions)
-                    h = torch.bmm(self._adj, h).squeeze(1)
-                    if b is not None: h = h + b
-                    # h: (batch_size * cand_num) * 1
-                    if length_mask is not None:
-                        mask = length_mask.view(-1).unsqueeze(1).expand(batch_size * cand_num, d)
-                        h = h * mask
-                    h = F.relu(h)
+                l = getattr(self, 'l{}'.format(i))
+                h = l(gc_input, self._adj, num_mentions, mask=length_mask)
                 # skip connection
                 sk_layer = getattr(self, 'sk{}'.format(i))
                 if sk_layer is not None:
@@ -449,7 +423,8 @@ class PNCELMLP(nn.Module):
                 else:
                     h = h + gc_input
                 gc_input = h
-
+        if self.classifier is not None:
+            gc_input = self.classifier(gc_input)
         # reshape, batch_size * cand_num
         h = gc_input.squeeze().view(batch_size, -1)
         output = masked_softmax(h, mask=length_mask)
@@ -458,15 +433,14 @@ class PNCELMLP(nn.Module):
     def reset_parameters(self):
         self.mlp_classifier.reset_parameters()
         for i in range(self._res_num):
-            for j in range(len(self._gc_layers[i])):
-                lw = getattr(self, 'w{}-{}'.format(i, j))
-                lb = getattr(self, 'b{}-{}'.format(i, j))
-                self._initializer(lw)
-                self._bias_initializer(lb)
+            l = getattr(self, 'l{}'.format(i))
+            l.reset_parameters()
             # skip connection
             sk_layer = getattr(self, 'sk{}'.format(i))
             if sk_layer is not None:
                 sk_layer.reset_parameters()
+        if self.classifier is not None:
+            self.classifier.reset_parameters()
 
     # e, num_mentions: batch * cand
     def getGraphSample(self, e, num_mentions, entity_vocab, id2wiki_vocab, only_one=False):
@@ -477,7 +451,7 @@ class PNCELMLP(nn.Module):
 
         batch_size, cand_num = e.shape
         # graph, (batch * cand) * (cand_num*window*2+1)
-        adj = self._adj.data.squeeze()
+        adj = self._adj.data.view(batch_size*cand_num, -1)
         # neighbors, (batch * cand) * (cand_num*window*2)
         e_var = to_gpu(Variable(torch.from_numpy(e).view(-1).unsqueeze(1), requires_grad=False).float())
         neighbors = self.getNeighCandidates(e_var, self._neighbor_cand_window, num_mentions).data.squeeze()
