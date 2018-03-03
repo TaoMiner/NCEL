@@ -15,7 +15,7 @@ def build_model(base_feature_dim, initial_embeddings, FLAGS, logger):
     model_cls = SUBNCEL
     # todo: mlp layer must lager than 1
     mlp_layers_dim = [2000, 1]
-    gc_layers = [[1, 1, 1]]
+    gc_layers = [[1, 1]]
     use_contexts2 = FLAGS.use_lr_context
     use_att = FLAGS.att
     use_embedding_feature = True
@@ -48,7 +48,7 @@ class SUBNCEL(nn.Module):
                  base_dim,
                  initial_embeddings,
                  mlp_layers_dim=[],
-                 gc_layers=[[1,1,1]],
+                 gc_layers=[[1,1]],
                  bias=True,
                  ln=False,
                  dropout=0.0,
@@ -268,7 +268,7 @@ class SUBNCEL(nn.Module):
         # (batch * cand) * (cand_num*window*2)
         adj = torch.clamp(F.cosine_similarity(cand_emb_expand, neigh_cands, dim=2), thred, 1)
         if thred > 0.0:
-            adj[adj<=thred]=0.0
+            adj[adj.data<=thred]=0.0
         # add self connection
         margin_col = to_gpu(Variable(torch.ones(batch_size*cand_num, 1),
                                      requires_grad=False))
@@ -395,7 +395,7 @@ class SUBNCEL(nn.Module):
         # neighbor candidates
         # (batch * cand) * (cand_num*window*2+1)
         self._adj = self.buildGraph(cand_emb1, self._neighbor_cand_window, num_mentions,
-                                    thred=self._thred).view(batch_size, cand_num, -1)
+                                    thred=self._thred).unsqueeze(1)
         # feature vec : (batch * cand) * feature_dim
         f_vec = torch.cat(features, dim=1)
         if self._use_embedding_feature:
@@ -410,9 +410,7 @@ class SUBNCEL(nn.Module):
         if self._res_num > 0:
             # (batch_size * cand_num) * dim
             if self._mlp_classes == 1:
-                gc_input = masked_softmax(gc_input.view(batch_size, -1), mask=length_mask).unsqueeze(2)
-            else:
-                gc_input = gc_input.view(batch_size, cand_num, -1)
+                gc_input = masked_softmax(gc_input.view(batch_size, -1), mask=length_mask).view(-1).unsqueeze(1)
             for i in range(self._res_num):
                 l = getattr(self, 'l{}'.format(i))
                 h = l(gc_input, self._adj, num_mentions, mask=length_mask)
@@ -451,7 +449,7 @@ class SUBNCEL(nn.Module):
 
         batch_size, cand_num = e.shape
         # graph, (batch * cand) * (cand_num*window*2+1)
-        adj = self._adj.data.view(batch_size*cand_num, -1)
+        adj = self._adj.data
         # neighbors, (batch * cand) * (cand_num*window*2)
         e_var = to_gpu(Variable(torch.from_numpy(e).view(-1).unsqueeze(1), requires_grad=False).float())
         neighbors = self.getNeighCandidates(e_var, self._neighbor_cand_window, num_mentions).data.squeeze()

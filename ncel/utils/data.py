@@ -796,8 +796,10 @@ def MakeEvalIterator(
         batch_indices = order[start:start + batch_size]
         candidate_batch = sources[batch_indices]
 
-        if len(candidate_batch) == batch_size:
-            data_iter.append(candidate_batch)
-        else:
-            print("Skipping " + str(len(candidate_batch)) + " examples.")
+        data_iter.append(candidate_batch)
+
+        # if len(candidate_batch) == batch_size:
+        #     data_iter.append(candidate_batch)
+        # else:
+        #    print("Skipping " + str(len(candidate_batch)) + " examples.")
     return data_iter

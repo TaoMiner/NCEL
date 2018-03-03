@@ -23,6 +23,14 @@ def to_gpu(var):
         return var.cuda(the_gpu.gpu)
     return var
 
+def ZeroInitializer(param):
+    shape = param.size()
+    init = np.zeros(shape).astype(np.float32)
+    param.data.set_(torch.from_numpy(init))
+
+def UniInitializer(param):
+    uniform(param, -0.005, 0.005)
+
 class LayerNormalization(nn.Module):
     # From: https://discuss.pytorch.org/t/lstm-with-layer-normalization/2150
 
@@ -287,17 +295,18 @@ class SubGraphConvolution(Module):
         gf_neighbors = torch.cat((gf_neighbors, f.unsqueeze(1)), dim=1)
         return gf_neighbors
 
-    # x: batch * group * in_features
-    # adj : batch * group * (2*group*window+1), self connection
+    # x: (batch * group) * in_features
+    # adj : (batch * group) * 1 * (2*group*window+1), self connection
     # mask : batch * group
     # graph_boundry : numpy, batch * group, 0 indicates the last group in the graph, otherwise 1
     def forward(self, x, adj, graph_boundry, mask=None):
-        batch_size, group_size, neighbor_size = adj.size()
+        total_batch_size, _, neighbor_size = adj.size()
+        batch_size, cand_num = graph_boundry.shape
         # todo: more flexible for adj neighbors
-        adj = adj.view(batch_size*group_size, neighbor_size).unsqueeze(1)
-        window = (neighbor_size-1)/group_size/2
 
-        h = x.view(batch_size*group_size, -1)
+        window = int((neighbor_size-1)*batch_size/total_batch_size/2)
+
+        h = x
 
         for i, dim in enumerate(self._layer_dims):
             w = getattr(self, 'w{}'.format(i))
@@ -309,14 +318,15 @@ class SubGraphConvolution(Module):
             if b is not None: h = h + b
             # h: batch * 1
             if mask is not None:
-                mask = mask.view(-1).unsqueeze(1).expand(batch_size*group_size, dim)
+                mask = mask.view(-1).unsqueeze(1).expand(total_batch_size, dim)
                 h = h * mask
             h = F.relu(h)
         return h
 
     def __repr__(self):
         return self.__class__.__name__ + ' (' \
-               + str(self._in_features) + ' -> '.join([str(d) for d in self._layer_dims]) + ')'
+               + str(self._in_features) + ' -> ' + \
+               ' -> '.join([str(d) for d in self._layer_dims]) + ')'
 
 class MLPClassifier(nn.Module):
     def __init__(self,
@@ -401,14 +411,6 @@ class MLP(nn.Module):
             layer = getattr(self, 'l{}'.format(i))
             layer.reset_parameters()
 
-def ZeroInitializer(param):
-    shape = param.size()
-    init = np.zeros(shape).astype(np.float32)
-    param.data.set_(torch.from_numpy(init))
-
-def UniInitializer(param):
-    uniform(param, -0.005, 0.005)
-
 def Linear(initializer=kaiming_normal,
            bias_initializer=ZeroInitializer):
     class CustomLinear(nn.Linear):
@@ -422,7 +424,7 @@ class Embed(nn.Module):
     def __init__(self, size, vocab_size, vectors, fine_tune=False):
         super(Embed, self).__init__()
         if fine_tune:
-            self.embed = nn.Embedding(vocab_size, size, sparse=False)
+            self.embed = nn.Embedding(vocab_size, size, sparse=True)
             self.embed.weight.data.copy_(torch.from_numpy(vectors))
         else:
             self.vectors = vectors

@@ -24,8 +24,12 @@ class ModelTrainer(object):
 
         self.logger.Log('One epoch is ' + str(self.epoch_length) + ' steps.')
 
-        self.dense_parameters = [param for name, param in model.named_parameters() if name not in ["embed.embed.weight"]]
-        self.sparse_parameters = [param for name, param in model.named_parameters() if name in ["embed.embed.weight"]]
+        self.dense_parameters = [param for name, param in model.named_parameters() if name
+                                 not in ["word_embed.embed.weight", "entity_embed.embed.weight",
+                                            "sense_embed.embed.weight", "mu_embed.embed.weight"]]
+        self.sparse_parameters = [param for name, param in model.named_parameters() if name
+                                  in ["word_embed.embed.weight", "entity_embed.embed.weight",
+                                  "sense_embed.embed.weight", "mu_embed.embed.weight"]]
         self.optimizer_type = FLAGS.optimizer_type
         self.l2_lambda = FLAGS.l2_lambda
         self.ckpt_step = FLAGS.ckpt_step
