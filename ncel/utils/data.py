@@ -142,6 +142,7 @@ def get_batch(batch, local_window, m_str_length=3, use_lr_context=True, split_by
             cids = []
             cids_sense = []
             num_m = []
+            y = []
             # pad tokens
             tmp_con1 = m.left_context(max_len=local_window, split_by_sent=split_by_sent)
             diff = local_window - len(tmp_con1)
@@ -172,6 +173,7 @@ def get_batch(batch, local_window, m_str_length=3, use_lr_context=True, split_by
                 if c.getIsGlod():
                     gold_idx = j
                 num_m.append(0 if (i+1)==tmp_ment_len else 1)
+                y.append(1 if c.getIsGlod() else 0)
 
             assert gold_idx >= 0, "Error: no gold candidate!"
             # padding current mention candidate to max_cand_num
@@ -188,6 +190,7 @@ def get_batch(batch, local_window, m_str_length=3, use_lr_context=True, split_by
                     cids.append(entity_pad)
                     cids_sense.append(sense_pad)
                     num_m.append(0 if (i + 1) == tmp_ment_len else 1)
+                    y.append(0)
             B.append(base)
             C1.append(con1)
             C2.append(con2)
@@ -195,6 +198,7 @@ def get_batch(batch, local_window, m_str_length=3, use_lr_context=True, split_by
             CID.append(cids)
             CID_sense.append(cids_sense)
             Y.append(gold_idx)
+            # Y.append(y)
             Num_mentions.append(num_m)
 
     C1 = np.array(C1)
@@ -510,6 +514,7 @@ def EntityToIDs(entity_vocabulary, dataset, sense_vocab=None,
     for i, doc in enumerate(dataset):
         dataset[i].n_candidates = 0
         for j, mention in enumerate(doc.mentions):
+            dataset[i].total_mentions += 1
             m_num += 1
             if not mention._is_trainable :
                 m_unk += 1

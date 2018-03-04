@@ -30,18 +30,22 @@ def inspect(model):
     return InspectModel(model)
 
 def finalStats(trainer, logger):
-    logger.Log("dev best:\n macc:{}, dacc:{}.".format(trainer.best_dev_macc,
-                                                      trainer.best_dev_dacc))
-    for i, acc in enumerate(trainer.best_test_accs):
-        best_test_macc, best_test_dacc = acc
-        logger.Log("test {} best:\n macc:{}, dacc:{}.".format(i, best_test_macc, best_test_dacc))
+    dev_mi_rec, dev_ma_rec, dev_mi_prec, dev_ma_prec, dev_mi_f1, dev_ma_f1 = trainer.best_dev_metrics
+    logger.Log("dev best:\n miPrec:{.2f}, maPrec:{.2f}, miRec:{.2f}, maRec:{.2f}, "
+               "miF1:{.2f}, maF1:{.2f}.".format(dev_mi_prec, dev_ma_prec, dev_mi_rec,
+                                                    dev_ma_rec, dev_mi_f1, dev_ma_f1))
+    for i, metrics in enumerate(trainer.best_test_metrics):
+        mi_rec, ma_rec, mi_prec, ma_prec, mi_f1, ma_f1 = metrics
+        logger.Log("test {} best:\n miPrec:{.2f}, maPrec:{.2f}, miRec:{.2f}, maRec:{.2f}, "
+               "miF1:{.2f}, maF1:{.2f}.".format(i, mi_prec, ma_prec, mi_rec,
+                                                    ma_rec, mi_f1, ma_f1))
 
 def stats(model, trainer, A, log_entry):
     time_metric = time_per_token(A.get('total_candidates'), A.get('total_time'))
 
     log_entry.step = trainer.step
-    log_entry.mention_accuracy = A.get_avg('mention_acc')
-    log_entry.document_accuracy = A.get_avg('doc_acc')
+    log_entry.mention_accuracy = A.get_avg('mention_prec')
+    log_entry.document_accuracy = A.get_avg('doc_prec')
     log_entry.total_cost = A.get_avg('total_cost')  # not actual mean
     log_entry.learning_rate = trainer.learning_rate
     log_entry.time_per_token_seconds = time_metric
@@ -49,18 +53,25 @@ def stats(model, trainer, A, log_entry):
     return log_entry
 
 def eval_stats(model, A, eval_data):
-    mention_correct = A.get('mention_correct')
-    batch_mentions = A.get('mention_batch')
-    eval_data.eval_mention_accuracy = sum(mention_correct) / float(sum(batch_mentions))
+    total_mentions = []
+    actual_mentions = []
+    actual_correct = []
+    for batch in A.get('doc_mentions'):
+        total_mentions += batch
+    for batch in A.get('doc_actual_mentions'):
+        actual_mentions += batch
+    for batch in A.get('doc_actual_correct'):
+        actual_correct += batch
 
-    doc_acc_per_batch = A.get('macro_acc')
-    batch_docs = A.get('doc_batch')
-    total_acc = 0.0
-    total_docs = 0
-    for i, dacc in enumerate(doc_acc_per_batch):
-        total_acc += dacc * batch_docs[i]
-        total_docs += batch_docs[i]
-    eval_data.eval_document_accuracy = total_acc / float(total_docs)
+    ma_precs = [correct / float(actual_mentions[i]) for i, correct in enumerate(actual_correct)]
+    ma_recs = [correct / float(total_mentions[i]) for i, correct in enumerate(actual_correct)]
+
+    eval_data.eval_mi_rec = sum(actual_correct) / float(sum(total_mentions))
+    eval_data.eval_ma_rec = sum(ma_recs) / float(len(ma_recs))
+    eval_data.eval_mi_prec = sum(actual_correct) / float(sum(actual_mentions))
+    eval_data.eval_ma_prec = sum(ma_precs) / float(len(ma_precs))
+    eval_data.eval_mi_f1 = 2 * eval_data.eval_mi_rec * eval_data.eval_mi_prec / (eval_data.eval_mi_rec + eval_data.eval_mi_prec)
+    eval_data.eval_ma_f1 = 2 * eval_data.eval_ma_rec * eval_data.eval_ma_prec / (eval_data.eval_ma_rec + eval_data.eval_ma_prec)
 
     time_metric = time_per_token(A.get('total_candidates'), A.get('total_time'))
     eval_data.time_per_token_seconds = time_metric
@@ -72,7 +83,7 @@ def train_format(log_entry):
     stats_str = "Step: {step}"
 
     # Accuracy Component.
-    stats_str += " Acc: mt {ment_acc:.5f} dc {doc_acc:.5f}"
+    stats_str += " Prec: mt {ment_prec:.5f} dc {doc_prec:.5f}"
 
     # Cost Component.
     stats_str += " Cost: to {total_loss:.5f}"
@@ -84,7 +95,7 @@ def train_format(log_entry):
 
 
 def eval_format(evaluation):
-    eval_str = "Step: {step} Eval acc: mt {ment_acc:.5f} dc {doc_acc:.5f} Time: {time:.5f}"
+    eval_str = "Step: {step} Eval prec: mt {ment_prec:.5f} dc {doc_prec:.5f} Time: {time:.5f}"
 
     return eval_str
 
@@ -92,8 +103,8 @@ def log_formatter(log_entry):
     """Defines the log string to print to std error."""
     args = {
         'step': log_entry.step,
-        'ment_acc': log_entry.mention_accuracy,
-        'doc_acc': log_entry.document_accuracy,
+        'ment_prec': log_entry.mention_accuracy,
+        'doc_prec': log_entry.document_accuracy,
         'total_loss': log_entry.total_cost,
         'time': log_entry.time_per_token_seconds,
     }
@@ -103,8 +114,8 @@ def log_formatter(log_entry):
         for evaluation in log_entry.evaluation:
             eval_args = {
                 'step': log_entry.step,
-                'ment_acc': evaluation.eval_mention_accuracy,
-                'doc_acc': evaluation.eval_document_accuracy,
+                'ment_prec': evaluation.eval_mi_prec,
+                'doc_prec': evaluation.eval_ma_prec,
                 'time': evaluation.time_per_token_seconds,
             }
             log_str += '\n' + \

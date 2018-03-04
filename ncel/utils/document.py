@@ -5,6 +5,7 @@ class Document:
         self.name = doc_name
         self.id = doc_id
         self.n_candidates = 0
+        self.total_mentions = 0
         self.mentions = []
         self.tokens = []
         self.sentences = []

@@ -6,9 +6,8 @@ import re
 
 
 def default_formatter(log_entry):
-    fmt = 'step {}: cand_acc{}, ment_acc{}, doc_acc{}, total_cost{}'.format(
+    fmt = 'step {}: ment_prec{}, doc_prec{}, total_cost{}'.format(
         log_entry.step,
-        log_entry.candidate_accuracy,
         log_entry.mention_accuracy,
         log_entry.mention_accuracy,
         log_entry.total_cost)

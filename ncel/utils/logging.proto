@@ -43,10 +43,13 @@ message NcelEntry {
 }
 
 message EvalData {
-  optional float eval_candidate_accuracy = 1;
-  optional float eval_mention_accuracy = 2;
-  optional float eval_document_accuracy = 3;
-  optional string filename = 4;
-  optional float time_per_token_seconds = 5;
-  optional string report_path = 6;
+  optional float eval_mi_rec = 1;
+  optional float eval_ma_rec = 2;
+  optional float eval_mi_prec = 3;
+  optional float eval_ma_prec = 4;
+  optional float eval_mi_f1 = 5;
+  optional float eval_ma_f1 = 6;
+  optional string filename = 7;
+  optional float time_per_token_seconds = 8;
+  optional string report_path = 9;
 }

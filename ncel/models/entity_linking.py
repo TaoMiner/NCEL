@@ -67,13 +67,12 @@ def evaluate(FLAGS, model, eval_set, log_entry,
 
         # Calculate accuracy.
         target = torch.from_numpy(y).long()
-        batch_mentions, mention_correct, batch_docs, doc_acc_per_batch =\
+        total_mentions, actual_mentions, actual_correct =\
             ComputeAccuracy(output.data, target, dataset_batch)
 
-        A.add('mention_correct', mention_correct)
-        A.add('mention_batch', batch_mentions)
-        A.add('macro_acc', doc_acc_per_batch)
-        A.add('doc_batch', batch_docs)
+        A.add('doc_mentions', total_mentions)
+        A.add('doc_actual_mentions', actual_mentions)
+        A.add('doc_actual_correct', actual_correct)
 
         # Update Aggregate Accuracies
         batch_candidates = num_candidates.sum()
@@ -112,10 +111,10 @@ def evaluate(FLAGS, model, eval_set, log_entry,
             ".report")
         reporter.write_report(eval_report_path)
 
-    eval_mention_accuracy = eval_log.eval_mention_accuracy
-    eval_document_accuracy = eval_log.eval_document_accuracy
+    metrics = eval_log.eval_mi_rec, eval_log.eval_ma_rec, eval_log.eval_mi_prec, eval_log.eval_ma_prec, \
+              eval_log.eval_mi_f1, eval_log.eval_ma_f1
 
-    return eval_mention_accuracy, eval_document_accuracy
+    return metrics
 
 # length: batch_size
 def sequence_mask(sequence_length, max_length):
@@ -182,18 +181,14 @@ def train_loop(
 
         target = torch.from_numpy(y).long()
         # Calculate accuracy.
-        batch_mentions, mention_correct, batch_docs, doc_acc_per_batch = \
+        total_mentions, actual_mentions, actual_correct = \
             ComputeAccuracy(output.data, target, doc_batch)
 
         # Calculate loss.
         loss = nn.CrossEntropyLoss()(output, to_gpu(Variable(target, volatile=False)))
-        # bce_loss = nn.BCELoss()(output.masked_select(vmask2d), to_gpu(Variable(target, volatile=False)))
-        # for n,p in model.named_parameters():
-        #   print('===========\nbefore gradient:{}\n----------\n{}'.format(n, p.grad))
+        # loss = nn.MultiLabelMarginLoss()(output, to_gpu(Variable(target, volatile=False)))
         # Backward pass.
         loss.backward()
-        # for n,p in model.named_parameters():
-        #     print('===========\nbefore gradient:{}\n----------\n{}'.format(n, p.grad))
         # Hard Gradient Clipping
         nn.utils.clip_grad_norm([param for name, param in model.named_parameters() if name not in
                                  ["word_embed.embed.weight", "entity_embed.embed.weight",
@@ -207,8 +202,10 @@ def train_loop(
 
         total_time = end - start
 
-        A.add('mention_acc', mention_correct/float(batch_mentions))
-        A.add('doc_acc', doc_acc_per_batch)
+        doc_accs = [correct/float(actual_mentions[i]) for i, correct in enumerate(actual_correct)]
+
+        A.add('mention_prec', sum(actual_correct)/float(sum(actual_mentions)))
+        A.add('doc_prec', sum(doc_accs)/float(len(doc_accs)))
         A.add('total_candidates', total_candidates)
         A.add('total_time', total_time)
 
@@ -221,12 +218,12 @@ def train_loop(
         if trainer.step > 0 and trainer.step % FLAGS.eval_interval_steps == 0:
             should_log = True
             # note: at most tow eval set due to training recording best
-            accs = []
+            eval_metrics = []
             for index, eval_set in enumerate(eval_iterators):
-                accs.append(evaluate(FLAGS, model, eval_set, log_entry, logger,
+                eval_metrics.append(evaluate(FLAGS, model, eval_set, log_entry, logger,
                                show_sample=FLAGS.show_sample, vocabulary=vocabulary,
                                eval_index=index))
-            trainer.new_accuracy(accs)
+            trainer.new_accuracy(eval_metrics)
             progress_bar.reset()
 
         if trainer.step > FLAGS.ckpt_step and trainer.step % FLAGS.ckpt_interval_steps == 0:

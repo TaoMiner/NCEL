@@ -43,9 +43,9 @@ class ModelTrainer(object):
         self.best_dev_step = 0
 
         # record best dev, test acc
-        self.best_dev_macc = 0
-        self.best_dev_dacc = 0
-        self.best_test_accs = []
+        self.best_dev_mi_prec = 0
+        self.best_dev_metrics = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        self.best_test_metrics = []
 
         # GPU support.
         self.gpu = FLAGS.gpu
@@ -66,21 +66,21 @@ class ModelTrainer(object):
             self.load(self.best_checkpoint_path, cpu=FLAGS.gpu < 0)
             self.logger.Log(
                 "Resuming at step: {} with best dev accuracy: {}".format(
-                    self.step, self.best_dev_macc))
+                    self.step, self.best_dev_mi_prec))
         elif os.path.isfile(self.standard_checkpoint_path):
             self.logger.Log("Found checkpoint, restoring.")
             self.load(self.standard_checkpoint_path, cpu=FLAGS.gpu < 0)
             self.logger.Log(
                 "Resuming at step: {} with best dev accuracy: {}".format(
-                    self.step, self.best_dev_macc))
+                    self.step, self.best_dev_mi_prec))
 
     def reset(self):
         self.step = 0
         self.best_dev_step = 0
 
         # record best dev, test acc
-        self.best_dev_macc = 0
-        self.best_dev_dacc = 0
+        self.best_dev_mi_prec = 0
+        self.best_dev_metrics = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
         self.best_test_accs = []
 
     def optimizer_reset(self, learning_rate):
@@ -113,21 +113,21 @@ class ModelTrainer(object):
         if self.sparse_optimizer is not None:
             self.sparse_optimizer.zero_grad()
 
-    def new_accuracy(self, accs):
+    def new_accuracy(self, eval_metrics):
         # Track best dev error
-        dev_acc = accs[0]
-        dev_macc, dev_dacc = dev_acc
-        if dev_macc > check_rho * self.best_dev_macc:
+        dev_metrics = eval_metrics[0]
+        dev_mi_rec, dev_ma_rec, dev_mi_prec, dev_ma_prec, dev_mi_f1, dev_ma_f1 = dev_metrics
+        if dev_mi_prec > check_rho * self.best_dev_mi_prec:
             self.best_dev_step = self.step
             if self.ckpt_on_best_dev_error and self.step > self.ckpt_step:
                 self.logger.Log(
                     "Checkpointing with new best dev accuracy of %f" %
-                    dev_macc)
+                    dev_mi_prec)
                 self.save(self.best_checkpoint_path)
-            self.best_dev_macc = dev_macc
-            self.best_dev_dacc = dev_dacc
-            if len(accs) > 1:
-                self.best_test_accs = accs[1:]
+            self.best_dev_metrics = dev_metrics
+            self.best_dev_mi_prec = dev_mi_prec
+            if len(eval_metrics) > 1:
+                self.best_test_metrics = eval_metrics[1:]
 
         # Learning rate decay
         if self.learning_rate_decay_when_no_progress != 1.0:
@@ -149,7 +149,7 @@ class ModelTrainer(object):
         save_dict = {
             'step': self.step,
             'best_dev_step': self.best_dev_step,
-            'best_dev_macc': self.best_dev_macc,
+            'best_dev_mi_prec': self.best_dev_mi_prec,
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'word_vocab': self.word_vocab,
@@ -226,4 +226,4 @@ class ModelTrainer(object):
 
         self.step = checkpoint['step']
         self.best_dev_step = checkpoint['best_dev_step']
-        self.best_dev_macc = checkpoint['best_dev_macc']
+        self.best_dev_mi_prec = checkpoint['best_dev_mi_prec']
