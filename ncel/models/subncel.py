@@ -15,7 +15,7 @@ def build_model(base_feature_dim, initial_embeddings, FLAGS, logger):
     model_cls = SUBNCEL
     # todo: mlp layer must lager than 1
     mlp_layers_dim = [2000, 1]
-    gc_layers = [[1, 1]]
+    gc_layers = []
     use_contexts2 = FLAGS.use_lr_context
     use_att = FLAGS.att
     use_embedding_feature = True
@@ -165,9 +165,9 @@ class SUBNCEL(nn.Module):
     def getNeighborMask(self, num_mentions, dim):
         batch_size, cand_num = num_mentions.shape
         # batch * cand_num
-        margin_col = to_gpu(torch.zeros(1, cand_num))
+        margin_col = to_gpu(Variable(torch.zeros(1, cand_num), requires_grad=False))
 
-        right_mask = to_gpu(torch.from_numpy(num_mentions)).float()
+        right_mask = to_gpu(Variable(torch.from_numpy(num_mentions), requires_grad=False)).float()
         left_mask = torch.cat([margin_col, right_mask[:-1, :]], dim=0)
 
         # (batch * cand_num) * dim
@@ -204,17 +204,23 @@ class SUBNCEL(nn.Module):
 
     # emb : (batch * cand_num) * dim
     # mask: (batch * cand_num) * dim
-    def getNeighborMentionEmbeddings(self, ment_emb, neighbor_window, num_mentions):
+    def getNeighborMentionEmbeddings(self, mention_embeddings, neighbor_window, num_mentions):
         batch_size, cand_num = num_mentions.shape
-        _, dim = ment_emb.size()
+        entity_emb, sense_emb, mu_emb = mention_embeddings
+        _, dim = entity_emb.size()
         left_mask, right_mask = self.getNeighborMask(num_mentions, dim)
-        margin_col = to_gpu(torch.zeros(cand_num, dim))
+        margin_col = to_gpu(Variable(torch.zeros(cand_num, dim), requires_grad=False))
 
-        neibor_ment_entity_emb = self.getNeighborMentionEmbeddingsForCandidate(ment_emb,
+        neibor_ment_entity_emb = self.getNeighborMentionEmbeddingsForCandidate(entity_emb,
                                  margin_col, cand_num, neighbor_window, left_mask, right_mask)
-        neibor_ment_entity_emb = Variable(neibor_ment_entity_emb, requires_grad=False)
-        neibor_ment_sense_emb = neibor_ment_entity_emb
-        neibor_ment_mu_emb = neibor_ment_entity_emb
+        neibor_ment_sense_emb = None
+        neibor_ment_mu_emb = None
+        if sense_emb is not None:
+            neibor_ment_sense_emb = self.getNeighborMentionEmbeddingsForCandidate(sense_emb,
+                                margin_col, cand_num, neighbor_window, left_mask, right_mask)
+        if mu_emb is not None:
+            neibor_ment_mu_emb = self.getNeighborMentionEmbeddingsForCandidate(mu_emb,
+                                margin_col, cand_num, neighbor_window, left_mask, right_mask)
         return neibor_ment_entity_emb, neibor_ment_sense_emb, neibor_ment_mu_emb
 
     def getExpandNeighCandidates(self, neigh_emb, batch_size, cand_num, dim):
@@ -225,10 +231,23 @@ class SUBNCEL(nn.Module):
         tmp_neigh_cand = tmp_neigh_cand.contiguous().view(batch_size * cand_num, cand_num, dim)
         return tmp_neigh_cand
 
+    def getNeighborCandidateMask(self, num_mentions, dim):
+        batch_size, cand_num = num_mentions.shape
+        # batch * cand_num
+        margin_col = to_gpu(torch.zeros(1, cand_num))
+
+        right_mask = to_gpu(torch.from_numpy(num_mentions)).float()
+        left_mask = torch.cat([margin_col, right_mask[:-1, :]], dim=0)
+
+        # (batch * cand_num) * dim
+        right_mask_expand = right_mask.view(-1).unsqueeze(1).expand(batch_size * cand_num, dim)
+        left_mask_expand = left_mask.view(-1).unsqueeze(1).expand(batch_size * cand_num, dim)
+        return left_mask_expand, right_mask_expand
+
     def getNeighCandidates(self, emb, window, num_mentions):
         batch_size, cand_num = num_mentions.shape
         _, dim = emb.size()
-        left_mask, right_mask = self.getNeighborMask(num_mentions, dim)
+        left_mask, right_mask = self.getNeighborCandidateMask(num_mentions, dim)
         margin_col = to_gpu(torch.zeros(cand_num, dim))
         left_list = []
         # (batch * cand) * dim
@@ -266,7 +285,7 @@ class SUBNCEL(nn.Module):
         # (batch * cand) * (cand_num*window*2)
         adj = torch.clamp(F.cosine_similarity(cand_emb_expand, neigh_cands, dim=2), thred, 1)
         if thred > 0.0:
-            adj[adj.data<=thred]=0.0
+            adj[adj<=thred]=0.0
         # add self connection
         margin_col = to_gpu(torch.ones(batch_size*cand_num, 1))
         # size: (batch * cand) * (cand_num*window*2+1)
@@ -380,9 +399,8 @@ class SUBNCEL(nn.Module):
         # neibor mention string similarity
         neigh_ment_sims = DEFAULT_SIM, DEFAULT_SIM, DEFAULT_SIM
         if self._neighbor_ment_window > 0 and num_mentions is not None:
-            ment_entity_embs, _, _ = ment_embs
             # (batch * cand_num) * dim
-            neigh_ment_embs = self.getNeighborMentionEmbeddings(ment_entity_embs.data,
+            neigh_ment_embs = self.getNeighborMentionEmbeddings(ment_embs,
                                 self._neighbor_ment_window, num_mentions)
             neigh_ment_sims = self.getCandidateSimilarity(neigh_ment_embs, candidate_embeddings)
         features.extend(neigh_ment_sims)
