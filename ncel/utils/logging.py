@@ -31,13 +31,13 @@ def inspect(model):
 
 def finalStats(trainer, logger):
     dev_mi_rec, dev_ma_rec, dev_mi_prec, dev_ma_prec, dev_mi_f1, dev_ma_f1 = trainer.best_dev_metrics
-    logger.Log("dev best:\n miPrec:{.2f}, maPrec:{.2f}, miRec:{.2f}, maRec:{.2f}, "
-               "miF1:{.2f}, maF1:{.2f}.".format(dev_mi_prec, dev_ma_prec, dev_mi_rec,
+    logger.Log("dev best:\n miPrec:{:.3f}, maPrec:{:.3f}, miRec:{:.3f}, maRec:{:.3f}, "
+               "miF1:{:.3f}, maF1:{:.3f}.".format(dev_mi_prec, dev_ma_prec, dev_mi_rec,
                                                     dev_ma_rec, dev_mi_f1, dev_ma_f1))
     for i, metrics in enumerate(trainer.best_test_metrics):
         mi_rec, ma_rec, mi_prec, ma_prec, mi_f1, ma_f1 = metrics
-        logger.Log("test {} best:\n miPrec:{.2f}, maPrec:{.2f}, miRec:{.2f}, maRec:{.2f}, "
-               "miF1:{.2f}, maF1:{.2f}.".format(i, mi_prec, ma_prec, mi_rec,
+        logger.Log("test {} best:\n miPrec:{:.3f}, maPrec:{:.3f}, miRec:{:.3f}, maRec:{:.3f}, "
+               "miF1:{:.3f}, maF1:{:.3f}.".format(i, mi_prec, ma_prec, mi_rec,
                                                     ma_rec, mi_f1, ma_f1))
 
 def stats(model, trainer, A, log_entry):

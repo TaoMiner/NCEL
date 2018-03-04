@@ -185,7 +185,7 @@ def train_loop(
             ComputeAccuracy(output.data, target, doc_batch)
 
         # Calculate loss.
-        loss = nn.CrossEntropyLoss()(output, to_gpu(Variable(target, volatile=False)))
+        loss = nn.CrossEntropyLoss()(output, to_gpu(Variable(target, requires_grad=False)))
         # loss = nn.MultiLabelMarginLoss()(output, to_gpu(Variable(target, volatile=False)))
         # Backward pass.
         loss.backward()
