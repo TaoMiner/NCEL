@@ -781,8 +781,6 @@ def MakeEvalIterator(
     # TODO(SB): Pad out the last few examples in the eval set if they don't
     # form a batch.
 
-    print("Warning: May be discarding eval examples at batch ends.")
-
     dataset_size = len(sources)
     order = list(range(dataset_size))
     data_iter = []
@@ -797,9 +795,4 @@ def MakeEvalIterator(
         candidate_batch = sources[batch_indices]
 
         data_iter.append(candidate_batch)
-
-        # if len(candidate_batch) == batch_size:
-        #     data_iter.append(candidate_batch)
-        # else:
-        #    print("Skipping " + str(len(candidate_batch)) + " examples.")
     return data_iter

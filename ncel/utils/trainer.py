@@ -149,6 +149,7 @@ class ModelTrainer(object):
         save_dict = {
             'step': self.step,
             'best_dev_step': self.best_dev_step,
+            'best_dev_macc': self.best_dev_macc,
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'word_vocab': self.word_vocab,
@@ -225,4 +226,4 @@ class ModelTrainer(object):
 
         self.step = checkpoint['step']
         self.best_dev_step = checkpoint['best_dev_step']
-        self.best_dev_error = checkpoint['best_dev_error']
+        self.best_dev_macc = checkpoint['best_dev_macc']

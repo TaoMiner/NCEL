@@ -28,7 +28,7 @@ en_punctuation = " \'\",:()\-\n"
 zh_punctuation = " ·＂＃＄％＆＇（）＊＋，－／：；＜＝＞＠［＼］＾＿｀｛｜｝～｟｠｢｣､、〃》「」『』【】〔〕〖〗〘〙〚〛〜〝〞〟〰〾〿–—‘’‛“”„‟…‧﹏"
 en_sent_split_punc = "\.?!"
 zh_ssplit_punc = "！？｡。"
-punction = '[{0}{1}]'.format(en_punctuation, zh_punctuation)
+punction = '[{0}{1}{2}{3}]'.format(en_punctuation, zh_punctuation, en_sent_split_punc, zh_ssplit_punc)
 ssplict_puncRE = re.compile('[{0}{1}]'.format(en_sent_split_punc, zh_ssplit_punc))
 class KbpDataLoader(xmlHandler):
     def __init__(self, rawtext_path, mention_fname, kbp_id2wikiid_file,
@@ -48,30 +48,9 @@ class KbpDataLoader(xmlHandler):
 
         for rt in raw_tokens:
             if len(rt) < 1 : continue
-            m = ssplict_puncRE.search(rt)
-            dot_idx = m.start() if m else -1
-            if dot_idx < 0 :
-                sent.append(rt)
-                doc.tokens.append(rt)
-            elif dot_idx == 0:
-                if len(sent) > 0:
-                    doc.sentences.append(sent)
-                    sent = []
-                if len(rt) > 1 :
-                    doc.tokens.append(rt[dot_idx + 1:])
-                    sent.append(rt[dot_idx+1:])
-            elif dot_idx == len(rt)-1:
-                doc.tokens.append(rt[:dot_idx])
-                sent.append(rt[:dot_idx])
-                doc.sentences.append(sent)
-                sent = []
-            else:
-                doc.tokens.append(rt[:dot_idx])
-                doc.tokens.append(rt[dot_idx+1:])
-                sent.append(rt[:dot_idx])
-                doc.sentences.append(sent)
-                sent = []
-                sent.append(rt[dot_idx + 1:])
+            sent.append(rt)
+            doc.tokens.append(rt)
+
         return sent
 
     def documents(self):
@@ -178,7 +157,7 @@ def load_data(text_path=None, mention_file=None, supplement=None,
               include_unresolved=False, lowercase=False, wiki_entity_file=None):
     assert not isinstance(text_path, type(None)) and not isinstance(text_path, type(None)) \
         and not isinstance(supplement, type(None)), "kbp data requires raw text path, mention file and id2wiki file!"
-    print("Loading", text_path)
+    print("Loading {0}, {1}".format(text_path, mention_file))
     wiki_map = loadWikiVocab(wiki_entity_file)
     docs = []
     doc_iter = KbpDataLoader(text_path, mention_file, supplement,

@@ -365,10 +365,6 @@ class MLPClassifier(nn.Module):
         if length is not None:
             mask = length.unsqueeze(1).expand(batch_size, self.num_class)
             h = h * mask
-        if self.num_class == 1:
-            h = h.squeeze()
-        else:
-            h = F.softmax(h)
         return h
 
     def reset_parameters(self):

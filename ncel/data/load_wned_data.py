@@ -20,7 +20,7 @@ en_punctuation = " \'\",:()\-\n"
 zh_punctuation = " ·＂＃＄％＆＇（）＊＋，－／：；＜＝＞＠［＼］＾＿｀｛｜｝～｟｠｢｣､、〃》「」『』【】〔〕〖〗〘〙〚〛〜〝〞〟〰〾〿–—‘’‛“”„‟…‧﹏"
 en_sent_split_punc = "\.?!"
 zh_ssplit_punc = "！？｡。"
-punction = '[{0}{1}]'.format(en_punctuation, zh_punctuation)
+punction = '[{0}{1}{2}{3}]'.format(en_punctuation, zh_punctuation, en_sent_split_punc, zh_ssplit_punc)
 ssplict_puncRE = re.compile('[{0}{1}]'.format(en_sent_split_punc, zh_ssplit_punc))
 
 class WnedDataLoader(xmlHandler):
@@ -39,31 +39,10 @@ class WnedDataLoader(xmlHandler):
         raw_tokens = re.split(punction, line_slice)
 
         for rt in raw_tokens:
-            if len(rt) < 1 : continue
-            m = ssplict_puncRE.search(rt)
-            dot_idx = m.start() if m else -1
-            if dot_idx < 0 :
-                sent.append(rt)
-                doc.tokens.append(rt)
-            elif dot_idx == 0:
-                if len(sent) > 0:
-                    doc.sentences.append(sent)
-                    sent = []
-                if len(rt) > 1 :
-                    doc.tokens.append(rt[dot_idx + 1:])
-                    sent.append(rt[dot_idx+1:])
-            elif dot_idx == len(rt)-1:
-                doc.tokens.append(rt[:dot_idx])
-                sent.append(rt[:dot_idx])
-                doc.sentences.append(sent)
-                sent = []
-            else:
-                doc.tokens.append(rt[:dot_idx])
-                doc.tokens.append(rt[dot_idx+1:])
-                sent.append(rt[:dot_idx])
-                doc.sentences.append(sent)
-                sent = []
-                sent.append(rt[dot_idx + 1:])
+            if len(rt) < 1: continue
+            sent.append(rt)
+            doc.tokens.append(rt)
+
         return sent
 
     def documents(self):

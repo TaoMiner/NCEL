@@ -24,6 +24,7 @@ def build_model(base_feature_dim, initial_embeddings, FLAGS, logger):
     bias = True
     rho = 0.2
     sim_thred = 0.8
+    temperature = 1.0
     return model_cls(
         base_feature_dim,
         initial_embeddings,
@@ -40,6 +41,7 @@ def build_model(base_feature_dim, initial_embeddings, FLAGS, logger):
         neighbor_cand_window=neighbor_cand_window,
         rho=rho,
         sim_thred=sim_thred,
+        temperature=temperature,
         logger=logger
     )
 
@@ -60,6 +62,7 @@ class SUBNCEL(nn.Module):
                  neighbor_cand_window=3,
                  rho=1.0,
                  sim_thred=0.8,
+                 temperature=0.1,
                  logger=None
                  ):
         super(SUBNCEL, self).__init__()
@@ -77,6 +80,7 @@ class SUBNCEL(nn.Module):
         self._gc_layers = gc_layers
         self._res_num = len(gc_layers)
         self._mlp_classes = mlp_layers_dim[-1]
+        self._temperature = temperature
 
         word_embeddings, entity_embeddings, sense_embeddings, mu_embeddings = initial_embeddings
         word_vocab_size, word_embedding_dim = word_embeddings.shape
@@ -405,12 +409,10 @@ class SUBNCEL(nn.Module):
                 f_vec = torch.cat((f_vec, con2_emb_cand1), dim=1)
 
         # mlp classify
-        gc_input = self.mlp_classifier(f_vec, length=length_mask.view(-1))
+        gc_input = self.mlp_classifier(f_vec, length=length_mask.view(-1)) * self._temperature
 
         if self._res_num > 0:
             # (batch_size * cand_num) * dim
-            if self._mlp_classes == 1:
-                gc_input = masked_softmax(gc_input.view(batch_size, -1), mask=length_mask).view(-1).unsqueeze(1)
             for i in range(self._res_num):
                 l = getattr(self, 'l{}'.format(i))
                 h = l(gc_input, self._adj, num_mentions, mask=length_mask)
@@ -496,7 +498,7 @@ def sequence_mask(sequence_length, max_length):
 
 # batch * cand_num
 def masked_softmax(logits, mask=None):
-    if mask is not None:
-        logits = logits * mask
     probs = F.softmax(logits, dim=1)
+    if mask is not None:
+        probs = probs * mask
     return probs

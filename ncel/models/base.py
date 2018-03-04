@@ -90,7 +90,7 @@ def unwrapDataset(data_tuples):
 def extractRawData(data_type, text_path, mention_file, supplement, FLAGS):
     assert data_type in DATA_TYPE, "Wrong input data types!"
     data_manager = get_data_manager(data_type)
-    if data_type in ["conll", "ncelwiki"]:
+    if data_type in ["conll", "xlwiki"]:
         supplement = int(supplement)
     raw_data = data_manager.load_data(text_path=text_path, mention_file=mention_file,
                  supplement=supplement, include_unresolved=FLAGS.include_unresolved,

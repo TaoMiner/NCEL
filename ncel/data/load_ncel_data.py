@@ -20,7 +20,8 @@ en_punctuation = " \'\",:()\-\n"
 zh_punctuation = " ·＂＃＄％＆＇（）＊＋，－／：；＜＝＞＠［＼］＾＿｀｛｜｝～｟｠｢｣､、〃》「」『』【】〔〕〖〗〘〙〚〛〜〝〞〟〰〾〿–—‘’‛“”„‟…‧﹏"
 en_sent_split_punc = "\.?!"
 zh_ssplit_punc = "！？｡。"
-punction = '[{0}{1}]'.format(en_punctuation, zh_punctuation)
+# punction = '[{0}{1}]'.format(en_punctuation, zh_punctuation)
+punction = '[{0}{1}{2}{3}]'.format(en_punctuation, zh_punctuation, en_sent_split_punc, zh_ssplit_punc)
 ssplict_puncRE = re.compile('[{0}{1}]'.format(en_sent_split_punc, zh_ssplit_punc))
 
 class NcelDataLoader(xmlHandler):
@@ -33,6 +34,20 @@ class NcelDataLoader(xmlHandler):
         self.lowercase = lowercase
         _, self._wiki_id2label = wiki_map
 
+    def _processLineSlice(self, line_slice, doc, sent):
+        # split words in line slice
+        # preprocess
+        raw_tokens = re.split(punction, line_slice)
+
+        for rt in raw_tokens:
+            if len(rt) < 1: continue
+            sent.append(rt)
+            doc.tokens.append(rt)
+
+        return sent
+
+    '''
+    # split sent by sent punction
     def _processLineSlice(self, line_slice, doc, sent):
         # split words in line slice
         # preprocess
@@ -65,6 +80,7 @@ class NcelDataLoader(xmlHandler):
                 sent = []
                 sent.append(rt[dot_idx + 1:])
         return sent
+    '''
 
     def getNormDocName(self, doc_name):
         doc_name = doc_name.replace(' ', '_').replace('?', '_').replace('*', '_').replace('/',
