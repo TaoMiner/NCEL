@@ -20,10 +20,10 @@ def build_model(base_feature_dim, initial_embeddings, FLAGS, logger):
     use_att = FLAGS.att
     use_embedding_feature = True
     neighbor_ment_window = 3
-    neighbor_cand_window = 5
+    neighbor_cand_window = 3
     bias = True
     rho = 0.1
-    sim_thred = 0.85
+    sim_thred = 0.9
     temperature = 0.2
     return model_cls(
         base_feature_dim,
@@ -381,7 +381,8 @@ class SUBNCEL(nn.Module):
         features.extend(mention_sims)
 
         # neibor mention string similarity
-        neigh_ment_sims = DEFAULT_SIM, DEFAULT_SIM, DEFAULT_SIM
+        default_sims = to_gpu(Variable(torch.FloatTensor([DEFAULT_SIM]*(batch_size*cand_num)).unsqueeze(1), requires_grad=False))
+        neigh_ment_sims = default_sims, default_sims, default_sims
         if self._neighbor_ment_window > 0 and num_mentions is not None:
             ment_entity_embs, _, _ = ment_embs
             # (batch * cand_num) * dim

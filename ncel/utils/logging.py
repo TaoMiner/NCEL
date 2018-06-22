@@ -95,8 +95,9 @@ def train_format(log_entry):
 
 
 def eval_format(evaluation):
-    eval_str = "Step: {step} Eval prec: mt {ment_prec:.5f} dc {doc_prec:.5f} Time: {time:.5f}"
-
+    eval_str = "test:\n miPrec:{miPrec:.3f}, maPrec:{maPrec:.3f}, miRec:{miRec:.3f}, " \
+               + "maRec:{maRec:.3f}, miF1:{miF1:.3f}, maF1:{maF1:.3f}."
+    
     return eval_str
 
 def log_formatter(log_entry):
@@ -113,9 +114,12 @@ def log_formatter(log_entry):
     if len(log_entry.evaluation) > 0:
         for evaluation in log_entry.evaluation:
             eval_args = {
-                'step': log_entry.step,
-                'ment_prec': evaluation.eval_mi_prec,
-                'doc_prec': evaluation.eval_ma_prec,
+                'miPrec': evaluation.eval_mi_prec,
+                'maPrec': evaluation.eval_ma_prec,
+                'miRec': evaluation.eval_mi_rec,
+                'maRec': evaluation.eval_ma_rec,
+                'miF1': evaluation.eval_mi_f1,
+                'maF1': evaluation.eval_ma_f1,
                 'time': evaluation.time_per_token_seconds,
             }
             log_str += '\n' + \

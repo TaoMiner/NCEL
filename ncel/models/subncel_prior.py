@@ -8,23 +8,23 @@ from torch.autograd import Variable
 import torch.nn.functional as F
 
 from ncel.utils.layers import Embed, to_gpu, MLPClassifier, Linear, SubGraphConvolution
-from ncel.utils.layers import UniInitializer
+from ncel.utils.layers import UniInitializer, LayerNormalization
 DEFAULT_SIM = 0.0
 
 def build_model(base_feature_dim, initial_embeddings, FLAGS, logger):
     model_cls = SUBNCEL
     # todo: mlp layer must lager than 1
     mlp_layers_dim = [2000, 1]
-    gc_layers = []
+    gc_layers = [[1, 1]]
     use_contexts2 = FLAGS.use_lr_context
     use_att = FLAGS.att
     use_embedding_feature = True
     neighbor_ment_window = 3
     neighbor_cand_window = 3
     bias = True
-    rho = 0.2
-    sim_thred = 0.8
-    temperature = 1.0
+    rho = 0.1
+    sim_thred = 0.85
+    temperature = 0.2
     return model_cls(
         base_feature_dim,
         initial_embeddings,
@@ -73,6 +73,7 @@ class SUBNCEL(nn.Module):
         self._neighbor_ment_window = neighbor_ment_window
         self._neighbor_cand_window = neighbor_cand_window
         self._ln = ln
+        self._gc_ln = True
         self._rho = rho
         self._logger = logger
         self._thred = sim_thred
@@ -81,56 +82,7 @@ class SUBNCEL(nn.Module):
         self._res_num = len(gc_layers)
         self._mlp_classes = mlp_layers_dim[-1]
         self._temperature = temperature
-
-        word_embeddings, entity_embeddings, sense_embeddings, mu_embeddings = initial_embeddings
-        word_vocab_size, word_embedding_dim = word_embeddings.shape
-        entity_vocab_size, entity_embedding_dim = entity_embeddings.shape
-        self._has_sense = True if sense_embeddings is not None else False
-        if self._has_sense:
-            sense_vocab_size, sense_embedding_dim = sense_embeddings.shape
-        self._dim = word_embedding_dim
-        assert self._dim == entity_embedding_dim and not (
-        self._has_sense and self._dim != sense_embedding_dim), "unmatched dim!"
-
-        self.word_embed = Embed(self._dim, word_vocab_size,
-                                vectors=word_embeddings, fine_tune=fine_tune_loaded_embeddings)
-
-        self.entity_embed = Embed(self._dim, entity_vocab_size,
-                                  vectors=entity_embeddings, fine_tune=fine_tune_loaded_embeddings)
-
-        if self._has_sense:
-            self.sense_embed = Embed(self._dim, sense_vocab_size,
-                                     vectors=sense_embeddings, fine_tune=fine_tune_loaded_embeddings)
-            self.mu_embed = Embed(self._dim, sense_vocab_size,
-                                  vectors=mu_embeddings, fine_tune=fine_tune_loaded_embeddings)
-
-        self.embeds = [self.word_embed, self.entity_embed, self.sense_embed, self.mu_embed]
-
-        #
-        self._use_embedding_feature = use_embedding_feature
-        self._feature_dim = base_dim + 4 * 3
-
-        if self._use_embedding_feature:
-            emb_num = 3 if self._use_contexts2 else 2
-            self._feature_dim += emb_num * self._dim
-
-        self.mlp_classifier = MLPClassifier(self._feature_dim, self._mlp_classes, layers_dim=mlp_layers_dim[:-1],
-                                            mlp_ln=self._ln, dropout=dropout)
-
-        features_dim = self._mlp_classes
-        if self._res_num > 0:
-            for i in range(self._res_num):
-                input_dim = features_dim
-                setattr(self, 'l{}'.format(i), SubGraphConvolution(features_dim, layer_dims=self._gc_layers[i], bias=True))
-                features_dim = self._gc_layers[i][-1]
-                # skip connection
-                setattr(self, 'sk{}'.format(i), Linear()(input_dim, features_dim) if input_dim != features_dim else None)
-
-        self.classifier = None
-        if features_dim!= 1:
-            self.classifier = Linear(initializer=UniInitializer)(features_dim, 1)
-
-        self.reset_parameters()
+        self.classifier = Linear(initializer=UniInitializer)(1, 1)
 
     # types: index of [word,entity,sense,mu]
     def run_embed(self, x, type):
@@ -165,9 +117,9 @@ class SUBNCEL(nn.Module):
     def getNeighborMask(self, num_mentions, dim):
         batch_size, cand_num = num_mentions.shape
         # batch * cand_num
-        margin_col = to_gpu(Variable(torch.zeros(1, cand_num), requires_grad=False))
+        margin_col = to_gpu(torch.zeros(1, cand_num))
 
-        right_mask = to_gpu(Variable(torch.from_numpy(num_mentions), requires_grad=False)).float()
+        right_mask = to_gpu(torch.from_numpy(num_mentions)).float()
         left_mask = torch.cat([margin_col, right_mask[:-1, :]], dim=0)
 
         # (batch * cand_num) * dim
@@ -204,23 +156,17 @@ class SUBNCEL(nn.Module):
 
     # emb : (batch * cand_num) * dim
     # mask: (batch * cand_num) * dim
-    def getNeighborMentionEmbeddings(self, mention_embeddings, neighbor_window, num_mentions):
+    def getNeighborMentionEmbeddings(self, ment_emb, neighbor_window, num_mentions):
         batch_size, cand_num = num_mentions.shape
-        entity_emb, sense_emb, mu_emb = mention_embeddings
-        _, dim = entity_emb.size()
+        _, dim = ment_emb.size()
         left_mask, right_mask = self.getNeighborMask(num_mentions, dim)
-        margin_col = to_gpu(Variable(torch.zeros(cand_num, dim), requires_grad=False))
+        margin_col = to_gpu(torch.zeros(cand_num, dim))
 
-        neibor_ment_entity_emb = self.getNeighborMentionEmbeddingsForCandidate(entity_emb,
+        neibor_ment_entity_emb = self.getNeighborMentionEmbeddingsForCandidate(ment_emb,
                                  margin_col, cand_num, neighbor_window, left_mask, right_mask)
-        neibor_ment_sense_emb = None
-        neibor_ment_mu_emb = None
-        if sense_emb is not None:
-            neibor_ment_sense_emb = self.getNeighborMentionEmbeddingsForCandidate(sense_emb,
-                                margin_col, cand_num, neighbor_window, left_mask, right_mask)
-        if mu_emb is not None:
-            neibor_ment_mu_emb = self.getNeighborMentionEmbeddingsForCandidate(mu_emb,
-                                margin_col, cand_num, neighbor_window, left_mask, right_mask)
+        neibor_ment_entity_emb = Variable(neibor_ment_entity_emb, requires_grad=False)
+        neibor_ment_sense_emb = neibor_ment_entity_emb
+        neibor_ment_mu_emb = neibor_ment_entity_emb
         return neibor_ment_entity_emb, neibor_ment_sense_emb, neibor_ment_mu_emb
 
     def getExpandNeighCandidates(self, neigh_emb, batch_size, cand_num, dim):
@@ -231,23 +177,10 @@ class SUBNCEL(nn.Module):
         tmp_neigh_cand = tmp_neigh_cand.contiguous().view(batch_size * cand_num, cand_num, dim)
         return tmp_neigh_cand
 
-    def getNeighborCandidateMask(self, num_mentions, dim):
-        batch_size, cand_num = num_mentions.shape
-        # batch * cand_num
-        margin_col = to_gpu(torch.zeros(1, cand_num))
-
-        right_mask = to_gpu(torch.from_numpy(num_mentions)).float()
-        left_mask = torch.cat([margin_col, right_mask[:-1, :]], dim=0)
-
-        # (batch * cand_num) * dim
-        right_mask_expand = right_mask.view(-1).unsqueeze(1).expand(batch_size * cand_num, dim)
-        left_mask_expand = left_mask.view(-1).unsqueeze(1).expand(batch_size * cand_num, dim)
-        return left_mask_expand, right_mask_expand
-
     def getNeighCandidates(self, emb, window, num_mentions):
         batch_size, cand_num = num_mentions.shape
         _, dim = emb.size()
-        left_mask, right_mask = self.getNeighborCandidateMask(num_mentions, dim)
+        left_mask, right_mask = self.getNeighborMask(num_mentions, dim)
         margin_col = to_gpu(torch.zeros(cand_num, dim))
         left_list = []
         # (batch * cand) * dim
@@ -328,9 +261,14 @@ class SUBNCEL(nn.Module):
 
         return entity_emb, sense_emb, mu_emb
 
-    def getCandidateSimilarity(self, embeddings, candidate_embeddings):
+    def getCandidateSimilarity(self, embeddings, candidate_embeddings, default_sims=None):
         cand_entity_emb, cand_sense_emb, cand_mu_emb = candidate_embeddings
         entity_emb, sense_emb, mu_emb = embeddings
+
+        if default_sims is None:
+            batch_size, _ = entity_emb.size()
+            default_sims = to_gpu(Variable(torch.FloatTensor([DEFAULT_SIM]*batch_size).unsqueeze(1),
+                                           requires_grad=False))
 
         cand_entity_emb_expand = cand_entity_emb.unsqueeze(1)
         sim1 = torch.bmm(cand_entity_emb_expand, entity_emb.unsqueeze(2)).squeeze(2)
@@ -357,87 +295,9 @@ class SUBNCEL(nn.Module):
         batch_size, cand_num, _ = base_feature.shape
         features = []
         # to gpu
-        base_feature = to_gpu(Variable(torch.from_numpy(base_feature), requires_grad=False)).float()
-        base_feature = base_feature.view(batch_size * cand_num, -1)
-        features.append(base_feature)
+        base_feature = to_gpu(Variable(torch.from_numpy(base_feature[:,:,-1]), requires_grad=False)).float()
 
-        # candidate mask
-        length_mask = None
-        if length is not None:
-            lengths_var = to_gpu(Variable(torch.from_numpy(length), requires_grad=False)).long()
-            # batch_size * cand_num
-            length_mask = sequence_mask(lengths_var, cand_num).float()
-
-        # get emb, (batch * cand) * dim
-        candidate_embeddings = self.getCandidateEmbedding(candidates, candidates_sense)
-        cand_emb1, cand_emb2, cand_emb3 = candidate_embeddings
-
-        # get context emb
-        context1_emb = self.getTokenEmbedding(contexts1,
-                       candidate_embeddings=candidate_embeddings if self._use_att else None)
-
-        # get contextual similarity, (batch * cand) * contextual_sim
-        con1_sims = self.getCandidateSimilarity(context1_emb, candidate_embeddings)
-        features.extend(con1_sims)
-
-        con2_sims = DEFAULT_SIM, DEFAULT_SIM, DEFAULT_SIM
-        con2_emb_cand1 = None
-        if self._use_contexts2 and contexts2 is not None:
-            context2_emb = self.getTokenEmbedding(contexts2,
-                        candidate_embeddings=candidate_embeddings if self._use_att else None)
-            con2_emb_cand1, con2_emb_cand2, con2_emb_cand3 = context2_emb
-            # get contextual similarity, (batch * cand) * contextual_sim
-            con2_sims = self.getCandidateSimilarity(context2_emb, candidate_embeddings)
-        features.extend(con2_sims)
-
-        # get mention string similarity,
-        # ment_embs = self.getTokenEmbedding(mention_tokens, candidate_embeddings=candidate_embeddings)
-        ment_embs = self.getTokenEmbedding(mention_tokens)
-        mention_sims = self.getCandidateSimilarity(ment_embs, candidate_embeddings)
-        features.extend(mention_sims)
-
-        # neibor mention string similarity
-        neigh_ment_sims = DEFAULT_SIM, DEFAULT_SIM, DEFAULT_SIM
-        if self._neighbor_ment_window > 0 and num_mentions is not None:
-            # (batch * cand_num) * dim
-            neigh_ment_embs = self.getNeighborMentionEmbeddings(ment_embs,
-                                self._neighbor_ment_window, num_mentions)
-            neigh_ment_sims = self.getCandidateSimilarity(neigh_ment_embs, candidate_embeddings)
-        features.extend(neigh_ment_sims)
-
-        # neighbor candidates
-        # (batch * cand) * (cand_num*window*2+1)
-        self._adj = self.buildGraph(cand_emb1.data, self._neighbor_cand_window, num_mentions,
-                                    thred=self._thred).unsqueeze(1)
-        # feature vec : (batch * cand) * feature_dim
-        f_vec = torch.cat(features, dim=1)
-        if self._use_embedding_feature:
-            con1_emb_cand1, con1_emb_cand2, con1_emb_cand3 = context1_emb
-            f_vec = torch.cat((f_vec, cand_emb1, con1_emb_cand1), dim=1)
-            if con2_emb_cand1 is not None:
-                f_vec = torch.cat((f_vec, con2_emb_cand1), dim=1)
-
-        # mlp classify
-        gc_input = self.mlp_classifier(f_vec, length=length_mask.view(-1)) * self._temperature
-
-        if self._res_num > 0:
-            # (batch_size * cand_num) * dim
-            for i in range(self._res_num):
-                l = getattr(self, 'l{}'.format(i))
-                h = l(gc_input, self._adj, num_mentions, mask=length_mask)
-                # skip connection
-                sk_layer = getattr(self, 'sk{}'.format(i))
-                if sk_layer is not None:
-                    h = h + sk_layer(gc_input)
-                else:
-                    h = h + gc_input
-                gc_input = h
-        if self.classifier is not None:
-            gc_input = self.classifier(gc_input)
-        # reshape, batch_size * cand_num
-        h = gc_input.squeeze().view(batch_size, -1)
-        output = masked_softmax(h, mask=length_mask)
-        return output
+        return base_feature.squeeze()
 
     def reset_parameters(self):
         self.mlp_classifier.reset_parameters()

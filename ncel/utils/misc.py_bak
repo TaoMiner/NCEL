@@ -68,23 +68,23 @@ def recursively_set_device(inp, gpu):
 # output: batch_size * cand_num
 # y: batch_size
 def ComputeAccuracy(output, y, docs, include_unresolved=False):
-    total_mentions = []
-    actual_mentions = []
-    actual_correct = []
+    total_mentions, max_cand_num = output.size()
+    batch_docs = len(docs)
+
     # get the index of the max log-probability, batch_size
     pred = output.max(1, keepdim=False)[1].cpu()
     # batch_size
     mention_correct = pred.eq(y)
+    doc_acc = 0.0
     s = 0
     for i, doc in enumerate(docs):
         e = s + len(doc.mentions)
         d_mention_slice = mention_correct[s:e]
+        doc_acc += d_mention_slice.sum() / float(len(d_mention_slice))
         s = e
-        total_mentions.append(doc.total_mentions)
-        actual_mentions.append(len(doc.mentions))
-        actual_correct.append(d_mention_slice.sum())
+    total_mention_correct = mention_correct.sum()
 
-    return total_mentions, actual_mentions, actual_correct
+    return total_mentions, total_mention_correct, batch_docs, doc_acc/float(batch_docs)
 
 # wiki_id \t wiki_label
 def loadWikiVocab(filename, id_vocab=None):
