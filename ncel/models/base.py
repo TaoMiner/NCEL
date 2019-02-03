@@ -378,7 +378,7 @@ def get_flags():
 
     # Model architecture settings.
     gflags.DEFINE_enum(
-        "model_type", "NCEL", [
+        "model_type", "SUBNCEL", [
                         "NCEL",
                         "PNCEL",
                         "PNCELMLP",
